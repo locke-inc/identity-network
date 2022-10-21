@@ -3,7 +3,7 @@ package peer;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/locke-inc/identity-networks/peer";
+option go_package = "github.com/locke-inc/identity-networks";
 
 message PeerHandshake {
     string PeerID = 1;

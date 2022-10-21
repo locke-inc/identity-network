@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/locke-inc/identity-network/peer"
 )
 
@@ -15,10 +17,10 @@ const (
 )
 
 // The initial handshake
-type PeerHandshake struct {
-	PeerID    string
-	PublicKey string
-}
+// type PeerHandshake struct {
+// 	PeerID    string
+// 	PublicKey string
+// }
 
 func main() {
 	// Init a new peer ID
@@ -52,17 +54,18 @@ func main() {
 // Handles incoming requests.
 func handleRequest(conn net.Conn) {
 	buf := make([]byte, 1024)
-	reqLen, err := conn.Read(buf)
+	_, err := conn.Read(buf)
 	if err != nil {
 		fmt.Println("Error reading:", err.Error())
 	}
 
-	if reqLen > 1 {
-		// Message received
-		// Going to contain a protobuff of PeerHandshake
-		fmt.Println("Request length is", reqLen)
-
+	ph := &peer.PeerHandshake{}
+	if err := proto.Unmarshal(buf, ph); err != nil {
+		log.Fatalln("Failed to parse address book:", err)
+		return
 	}
+	fmt.Println("Received peer handshake:", &ph)
+
 	// Send a response back to person contacting us.
 	conn.Write([]byte("Message received."))
 
