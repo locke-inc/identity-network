@@ -1,0 +1,14 @@
+syntax = "proto3";
+package peer;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/locke-inc/identity-networks/peer";
+
+message PeerHandshake {
+    string PeerID = 1;
+    string PublicKey = 2;
+  
+    google.protobuf.Timestamp last_updated = 3;
+}
+  
