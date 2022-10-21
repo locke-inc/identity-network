@@ -38,7 +38,7 @@ type KeyGenerateSettings struct {
 	Size      int
 }
 
-func (p *Peer) Init() {
+func New() Peer {
 	fmt.Println("Initializing new peer...")
 	peer := Peer{}
 	identity, err := CreateIdentity(KeyGenerateSettings{Algorithm: "ed25519", Size: -1})
@@ -47,7 +47,7 @@ func (p *Peer) Init() {
 	}
 
 	peer.Identity = identity
-	fmt.Println("New peer initialized! Identity:", peer.Identity)
+	return peer
 }
 
 // CreateIdentity initializes a new identity.
