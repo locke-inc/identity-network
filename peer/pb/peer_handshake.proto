@@ -7,8 +7,9 @@ option go_package = "github.com/locke-inc/identity-networks";
 
 message PeerHandshake {
     string PeerID = 1;
-    string PublicKey = 2;
+    string SignPublicKey = 2;
+    string EncryptPublicKey = 3;
   
-    google.protobuf.Timestamp last_updated = 3;
+    google.protobuf.Timestamp last_updated = 4;
 }
   

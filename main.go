@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/locke-inc/identity-network/peer"
+	"github.com/locke-inc/identity-network/peer/pb"
 )
 
 const (
@@ -25,10 +27,13 @@ const (
 func main() {
 	// Init a new peer ID
 	peer := peer.New()
-	fmt.Println("New peer initialized. Peer ID:", peer.Identity)
+	fmt.Println("New peer initialized. Peer ID:", peer.PeerID)
+
+	portPtr := flag.String("port", "3333", "port for TCP listener")
+	flag.Parse()
 
 	// Start the TCP server
-	l, err := net.Listen(CONN_TYPE, CONN_HOST+":"+CONN_PORT)
+	l, err := net.Listen(CONN_TYPE, CONN_HOST+":"+*portPtr)
 	if err != nil {
 		fmt.Println("Error listening:", err.Error())
 		os.Exit(1)
@@ -37,7 +42,7 @@ func main() {
 	// Close the listener when the application closes.
 	defer l.Close()
 
-	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
+	fmt.Println("Listening on " + CONN_HOST + ":" + *portPtr)
 	for {
 		// Listen for an incoming connection.
 		conn, err := l.Accept()
@@ -59,7 +64,7 @@ func handleRequest(conn net.Conn) {
 		fmt.Println("Error reading:", err.Error())
 	}
 
-	ph := &peer.PeerHandshake{}
+	ph := &pb.PeerHandshake{}
 	if err := proto.Unmarshal(buf, ph); err != nil {
 		log.Fatalln("Failed to parse address book:", err)
 		return

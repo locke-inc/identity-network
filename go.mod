@@ -5,6 +5,7 @@ go 1.19
 require github.com/connorpeters/locke-dynauth v0.0.0-20210922211155-fb5411f1ee65
 
 require (
+	github.com/cloudflare/circl v1.2.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

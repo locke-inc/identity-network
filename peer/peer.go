@@ -1,10 +1,11 @@
 package peer
 
 import (
-	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 
+	"github.com/cloudflare/circl/kem/hybrid"
+	"github.com/cloudflare/circl/sign/eddilithium3"
 	"github.com/ipfs/go-namesys"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/mr-tron/base58/base58"
@@ -29,8 +30,9 @@ type Peer struct {
 }
 
 type Identity struct {
-	PeerID  string
-	PrivKey string `json:",omitempty"`
+	PeerID         string
+	SignPrivKey    string `json:",omitempty"`
+	EncryptPrivKey string `json:",omitempty"`
 }
 
 type KeyGenerateSettings struct {
@@ -41,7 +43,7 @@ type KeyGenerateSettings struct {
 func New() Peer {
 	fmt.Println("Initializing new peer...")
 	peer := Peer{}
-	identity, err := CreateIdentity(KeyGenerateSettings{Algorithm: "ed25519", Size: -1})
+	identity, err := CreateIdentity()
 	if err != nil {
 		fmt.Println("Error!", err)
 	}
@@ -50,46 +52,50 @@ func New() Peer {
 	return peer
 }
 
-// CreateIdentity initializes a new identity.
-func CreateIdentity(opts KeyGenerateSettings) (Identity, error) {
+// CreateIdentity initializes a new identity
+// currently storing key unencrypted. in the future we need to encrypt it.
+// TODO(security)
+func CreateIdentity() (Identity, error) {
 	ident := Identity{}
 
-	var sk PrivKey
-	var pk PubKey
-
-	switch opts.Algorithm {
-	case "ed25519":
-		if opts.Size != -1 {
-			return ident, fmt.Errorf("number of key bits does not apply when using ed25519 keys")
-		}
-		priv, pub, err := GenerateEd25519Key(rand.Reader)
-		if err != nil {
-			return ident, err
-		}
-
-		sk = priv
-		pk = pub
-	// case "kyber":
-	// 	priv, pub, err := kyberk2so.KemKeypair768()
-	// 	if err != nil {
-	// 		return ident, err
-	// 	}
-
-	// 	sk = priv
-	// 	pk = pub
-	default:
-		return ident, fmt.Errorf("unrecognized key type: %s", opts.Algorithm)
-	}
-
-	// currently storing key unencrypted. in the future we need to encrypt it.
-	// TODO(security)
-	skbytes, err := MarshalPrivateKey(sk)
+	// Generate signing keys
+	signPubKey, signPrivKey, err := eddilithium3.GenerateKey(nil)
 	if err != nil {
-		return ident, err
+		panic(err)
 	}
-	ident.PrivKey = base64.StdEncoding.EncodeToString(skbytes)
 
-	id, err := IDFromPublicKey(pk)
+	packedSignPrivKey, err := signPrivKey.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+
+	// Generate encryption keys
+	kyber768 := hybrid.Kyber768X448()
+	encryptPubKey, encryptPrivKey, err := kyber768.GenerateKeyPair()
+	if err != nil {
+		panic(err)
+	}
+
+	packedEncryptPrivKey, err := encryptPrivKey.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+
+	ident.SignPrivKey = base64.StdEncoding.EncodeToString(packedSignPrivKey)
+	ident.EncryptPrivKey = base64.StdEncoding.EncodeToString(packedEncryptPrivKey)
+
+	// Pack public keys and create peerID
+	packedSignPubKey, err := signPubKey.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+
+	packedEncryptPubKey, err := encryptPubKey.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+
+	id, err := IDFromPublicKey(append(packedSignPubKey, packedEncryptPubKey...))
 	if err != nil {
 		return ident, err
 	}
@@ -99,15 +105,8 @@ func CreateIdentity(opts KeyGenerateSettings) (Identity, error) {
 }
 
 // IDFromPublicKey returns the Peer ID corresponding to the public key pk.
-func IDFromPublicKey(pk PubKey) (string, error) {
-	b, err := MarshalPublicKey(pk)
-	if err != nil {
-		return "", err
-	}
+func IDFromPublicKey(b []byte) (string, error) {
 	var alg uint64 = SHA2_256
-	// if AdvancedEnableInlining && len(b) <= maxInlineKeyLength {
-	// 	alg = mh.IDENTITY
-	// }
 	hash, _ := Sum(b, alg, -1)
 	return string(hash), nil
 }

@@ -4,7 +4,7 @@
 // 	protoc        v3.21.8
 // source: peer_handshake.proto
 
-package peer
+package pb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
