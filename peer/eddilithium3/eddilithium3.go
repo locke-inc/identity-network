@@ -3,7 +3,6 @@ package eddilithium3
 import (
 	"crypto"
 
-	// "github.com/cloudflare/circl/sign/eddilithium3"
 	"github.com/cloudflare/circl/sign/dilithium/mode3"
 	"github.com/cloudflare/circl/sign/ed448"
 	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
