@@ -8,7 +8,7 @@ import (
 	"github.com/cloudflare/circl/sign/ed448"
 	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	crypto_pb "github.com/libp2p/go-libp2p/core/crypto/pb"
-	eddilithium3 "github.com/locke-inc/identity-network/peer/crypto"
+	"github.com/locke-inc/identity-network/peer/eddilithium3"
 )
 
 type Eddilithium3PrivKey struct {

@@ -10,7 +10,7 @@ import (
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	lockepeer "github.com/locke-inc/identity-network/peer"
-	eddilithium3 "github.com/locke-inc/identity-network/peer/crypto"
+	"github.com/locke-inc/identity-network/peer/eddilithium3"
 
 	ma "github.com/multiformats/go-multiaddr"
 )

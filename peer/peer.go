@@ -2,14 +2,12 @@ package peer
 
 import (
 	"context"
-	"crypto/rand"
 	"flag"
 	"fmt"
-	"log"
 	"time"
 
-	// "github.com/cloudflare/circl/sign/eddilithium3"
-	eddilithium3 "github.com/locke-inc/identity-network/peer/crypto"
+	"github.com/locke-inc/identity-network/peer/eddilithium3"
+	"github.com/multiformats/go-multiaddr"
 
 	"github.com/ipfs/go-namesys"
 	"github.com/libp2p/go-libp2p"
@@ -18,9 +16,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
-
-	// "github.com/libp2p/go-libp2p/p2p/net/connmgr"
-
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 
 	"github.com/mr-tron/base58/base58"
@@ -57,52 +52,50 @@ type KeyGenerateSettings struct {
 func (p *Peer) New() {
 	fmt.Println("Initializing new peer...")
 
-	// ctx, cancel := context.WithCancel(context.Background())
-	// defer cancel()
-
-	dest := flag.String("d", "", "Destination multiaddr string")
-	peerID := flag.String("p", "", "Peer ID")
+	// Get flags
+	dest := flag.String("dest", "", "Destination multiaddr string")
+	peerID := flag.String("peer", "", "Peer ID")
+	port := flag.String("port", "5533", "Port")
 	flag.Parse()
 
-	// identity, err := createIdentity()
-	// if err != nil {
-	// 	fmt.Println("Error!", err)
-	// }
-
-	// p.Identity = identity
+	// Create private key
 	// Generate signing keys
-
-	priv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
+	_, privKey, err := eddilithium3.GenerateKey(nil)
 	if err != nil {
 		panic(err)
 	}
-	// _, privKey, err := eddilithium3.GenerateKey(nil)
+	priv := &Eddilithium3PrivKey{privKey}
+
+	// priv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
 	// if err != nil {
 	// 	panic(err)
 	// }
 
-	// sk := Eddilithium3PrivKey{privKey}
-
-	// fmt.Println("New peer identity created, ID:", identity.PeerID)
 	fmt.Println("Creating new host...")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// host := CreateHost(p.Identity.PrivKey, ctx)
-	// host := createHost(&sk, ctx)
+	// Create new host
+	host := createHost(priv, *port, ctx)
 
-	fmt.Println("New host created, connecting to:", *dest)
+	// Start listening on that host
+	host.SetStreamHandler("/locke/1.0.0", handleStream)
 
-	// Starting daemon
-	err = run(priv, *dest, *peerID)
-	// rw, err := startPeerAndConnect(ctx, host, *dest)
-
+	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", *port))
 	if err != nil {
-		log.Println(err)
-		return
+		panic(err)
 	}
 
-	// Create a thread to read and write data.
-	// go writeData(rw)
-	// go readData(rw)
+	host.Network().Listen(addr)
+	defer host.Close()
+
+	// Connect if dest and peerID are supplied arguments
+	if *dest != "" && *peerID != "" {
+		connect(ctx, host, *dest, *peerID)
+	}
+
+	// Keep alive
+	select {}
 }
 
 // CreateIdentity initializes a new identity
@@ -135,7 +128,7 @@ func createIdentity() (Identity, error) {
 	return ident, nil
 }
 
-func createHost(priv crypto.PrivKey, ctx context.Context) host.Host {
+func createHost(priv crypto.PrivKey, port string, ctx context.Context) host.Host {
 	connmgr, err := connmgr.NewConnManager(
 		100, // Lowwater
 		400, // HighWater,
@@ -146,16 +139,9 @@ func createHost(priv crypto.PrivKey, ctx context.Context) host.Host {
 	}
 
 	host, err := libp2p.New(
-		// Use the keypair we generated
 		libp2p.Identity(priv),
-		// Multiple listen addresses
-		libp2p.ListenAddrStrings(
-			"/ip4/0.0.0.0/udp/9000/quic", // a UDP endpoint for the QUIC transport
-		),
 		// support QUIC
-		libp2p.Transport(libp2pquic.NewTransport),
-		// support any other default transports (TCP)
-		// libp2p.DefaultTransports,
+		libp2p.Transport(libp2pquic.NewTransport(priv, nil, nil, nil)),
 		// Let's prevent our peer from having too many
 		// connections by attaching a connection manager.
 		libp2p.ConnectionManager(connmgr),
@@ -174,8 +160,7 @@ func createHost(priv crypto.PrivKey, ctx context.Context) host.Host {
 	if err != nil {
 		panic(err)
 	}
-	defer host.Close()
-	fmt.Printf("Hello World, my second hosts ID is %s\n", host.ID())
+	fmt.Printf("Hello World, my hosts ID is %s\n", host.ID())
 
 	return host
 }

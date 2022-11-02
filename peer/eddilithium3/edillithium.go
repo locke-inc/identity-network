@@ -1,3 +1,4 @@
+// MODIFIED by Connor from Locke to export E & D for integration with IPFS
 // Package eddilithium3 implements the hybrid signature scheme Ed448-Dilithium3.
 package eddilithium3
 
@@ -11,6 +12,7 @@ import (
 	"github.com/cloudflare/circl/sign"
 	"github.com/cloudflare/circl/sign/dilithium/mode3"
 	"github.com/cloudflare/circl/sign/ed448"
+	"github.com/cloudflare/circl/sign/eddilithium3"
 	"golang.org/x/crypto/sha3"
 )
 
