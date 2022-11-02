@@ -9,7 +9,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
-	lockepeer "github.com/locke-inc/identity-network/peer"
 	"github.com/locke-inc/identity-network/peer/eddilithium3"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -39,7 +38,7 @@ func run(port string) error {
 		panic(err)
 	}
 
-	sk := &lockepeer.Eddilithium3PrivKey{priv}
+	sk := &eddilithium3.Eddilithium3PrivKey{priv}
 
 	peerID, err := peer.IDFromPrivateKey(sk)
 	if err != nil {

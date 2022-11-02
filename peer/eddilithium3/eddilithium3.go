@@ -1,4 +1,4 @@
-package peer
+package eddilithium3
 
 import (
 	"crypto"
@@ -8,15 +8,14 @@ import (
 	"github.com/cloudflare/circl/sign/ed448"
 	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	crypto_pb "github.com/libp2p/go-libp2p/core/crypto/pb"
-	"github.com/locke-inc/identity-network/peer/eddilithium3"
 )
 
 type Eddilithium3PrivKey struct {
-	Priv *eddilithium3.PrivateKey
+	Priv *PrivateKey
 }
 
 type Eddilithium3PubKey struct {
-	Pub *eddilithium3.PublicKey
+	Pub *PublicKey
 }
 
 // Private key functions to satisfy interface
@@ -48,7 +47,7 @@ func (privKey *Eddilithium3PrivKey) Sign(data []byte) ([]byte, error) {
 // (5) GetPublic
 func (privKey *Eddilithium3PrivKey) GetPublic() libp2pcrypto.PubKey {
 	return &Eddilithium3PubKey{
-		Pub: &eddilithium3.PublicKey{
+		Pub: &PublicKey{
 			privKey.Priv.E.Public().(ed448.PublicKey),
 			*privKey.Priv.D.Public().(*mode3.PublicKey),
 		},
@@ -78,5 +77,5 @@ func (pubKey *Eddilithium3PubKey) Type() crypto_pb.KeyType {
 
 // (4) Verify
 func (pubKey *Eddilithium3PubKey) Verify(data, sigBytes []byte) (success bool, err error) {
-	return eddilithium3.Verify(pubKey.Pub, data, sigBytes), nil
+	return Verify(pubKey.Pub, data, sigBytes), nil
 }

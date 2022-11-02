@@ -41,7 +41,7 @@ type Peer struct {
 
 type Identity struct {
 	PeerID  string
-	PrivKey *Eddilithium3PrivKey `json:",omitempty"`
+	PrivKey *eddilithium3.Eddilithium3PrivKey `json:",omitempty"`
 }
 
 type KeyGenerateSettings struct {
@@ -64,7 +64,7 @@ func (p *Peer) New() {
 	if err != nil {
 		panic(err)
 	}
-	priv := &Eddilithium3PrivKey{privKey}
+	priv := &eddilithium3.Eddilithium3PrivKey{privKey}
 
 	// priv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
 	// if err != nil {
@@ -110,7 +110,7 @@ func createIdentity() (Identity, error) {
 		panic(err)
 	}
 
-	ident.PrivKey = &Eddilithium3PrivKey{privKey}
+	ident.PrivKey = &eddilithium3.Eddilithium3PrivKey{privKey}
 
 	// Pack public keys and create peerID
 	packedPubKey, err := pubKey.MarshalBinary()
