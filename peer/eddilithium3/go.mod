@@ -1,4 +1,4 @@
-module github.com/locke-inc/identity-network/peer/edilithium3
+module github.com/locke-inc/identity-network/peer/eddilithium3
 
 go 1.19
 
