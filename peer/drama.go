@@ -3,15 +3,15 @@ package peer
 import "time"
 
 type Drama struct {
-	genesisBlock Block
-	chain        []Block
-	difficulty   int
+	GenesisBlock Block
+	Chain        []Block
+	Difficulty   int
 }
 
 func CreateDrama(difficulty int) Drama {
 	genesisBlock := Block{
-		hash:      "0",
-		timestamp: time.Now(),
+		Hash:      "0",
+		Timestamp: time.Now(),
 	}
 	return Drama{
 		genesisBlock,
@@ -20,27 +20,22 @@ func CreateDrama(difficulty int) Drama {
 	}
 }
 
-func (b *Drama) addBlock(from, to string, amount float64) {
-	blockData := map[string]interface{}{
-		"from":   from,
-		"to":     to,
-		"amount": amount,
-	}
-	lastBlock := b.chain[len(b.chain)-1]
+func (b *Drama) addBlock(t Transaction) {
+	lastBlock := b.Chain[len(b.Chain)-1]
 	newBlock := Block{
-		data:         blockData,
-		previousHash: lastBlock.hash,
-		timestamp:    time.Now(),
+		Data:         t,
+		PreviousHash: lastBlock.Hash,
+		Timestamp:    time.Now(),
 	}
-	newBlock.mine(b.difficulty)
-	b.chain = append(b.chain, newBlock)
+	newBlock.mine(b.Difficulty)
+	b.Chain = append(b.Chain, newBlock)
 }
 
 func (b Drama) isValid() bool {
-	for i := range b.chain[1:] {
-		previousBlock := b.chain[i]
-		currentBlock := b.chain[i+1]
-		if currentBlock.hash != currentBlock.calculateHash() || currentBlock.previousHash != previousBlock.hash {
+	for i := range b.Chain[1:] {
+		previousBlock := b.Chain[i]
+		currentBlock := b.Chain[i+1]
+		if currentBlock.Hash != currentBlock.calculateHash() || currentBlock.PreviousHash != previousBlock.Hash {
 			return false
 		}
 	}

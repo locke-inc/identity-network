@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/boltdb/bolt"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
@@ -82,22 +81,19 @@ func connect(ctx context.Context, p *Peer, destination string, pid string) {
 	log.Println("Established connection to destination")
 
 	// Add to community store
-	err = p.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("connor"))
-		err := b.Put([]byte(pid), []byte("connor"))
-		return err
-	})
+	var peers []string
+	err = p.addPerson("connor", append(peers, pid))
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Println("Added to store! Let's test")
-
 	connor, err := p.getPerson("connor")
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Println("Yay!!", connor)
+	fmt.Println("Peers:", connor.Peers)
 	handleStream(str)
 }

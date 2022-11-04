@@ -10,23 +10,32 @@ import (
 )
 
 type Block struct {
-	data         map[string]interface{}
-	hash         string
-	previousHash string
-	timestamp    time.Time
-	pow          int
+	Data         Transaction
+	Hash         string
+	PreviousHash string
+	Timestamp    time.Time
+	Pow          int
+}
+
+type Transaction struct {
+	Requester   string // peerID that initiated the transaction
+	RequestType string // "auth" for example
+
+	Responder   string // peerID that responded
+	Result      int    // for now let's say it's between 0 and 100%
+	ProcessTime time.Duration
 }
 
 func (b Block) calculateHash() string {
-	data, _ := json.Marshal(b.data)
-	blockData := b.previousHash + string(data) + b.timestamp.String() + strconv.Itoa(b.pow)
+	data, _ := json.Marshal(b.Data)
+	blockData := b.PreviousHash + string(data) + b.Timestamp.String() + strconv.Itoa(b.Pow)
 	blockHash := sha256.Sum256([]byte(blockData))
 	return fmt.Sprintf("%x", blockHash)
 }
 
 func (b *Block) mine(difficulty int) {
-	for !strings.HasPrefix(b.hash, strings.Repeat("0", difficulty)) {
-		b.pow++
-		b.hash = b.calculateHash()
+	for !strings.HasPrefix(b.Hash, strings.Repeat("0", difficulty)) {
+		b.Pow++
+		b.Hash = b.calculateHash()
 	}
 }
