@@ -2,14 +2,15 @@ package peer
 
 import (
 	"context"
+	"crypto/rand"
+
 	"flag"
 	"fmt"
 	"time"
 
-	"github.com/locke-inc/identity-network/peer/eddilithium3"
+	"github.com/boltdb/bolt"
 	"github.com/multiformats/go-multiaddr"
 
-	"github.com/ipfs/go-namesys"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/routing"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -17,8 +18,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
-
-	"github.com/mr-tron/base58/base58"
 )
 
 /*
@@ -34,20 +33,19 @@ import (
     structure to create immutable receipts.
 */
 type Peer struct {
-	Identity
-	DHT     *dht.IpfsDHT
-	Namesys namesys.NameSystem
+	Host host.Host
+	DB   *bolt.DB
+
+	// A person is defined by all the peers they own
+	// This peer being one of them
+	// Therefore the owner is represented as a LAN
+	OwnerLAN *dht.IpfsDHT
 }
 
-type Identity struct {
-	PeerID  string
-	PrivKey *eddilithium3.Eddilithium3PrivKey `json:",omitempty"`
-}
-
-type KeyGenerateSettings struct {
-	Algorithm string
-	Size      int
-}
+// type Identity struct {
+// 	PeerID  string
+// 	PrivKey crypto.PrivKey `json:",omitempty"`
+// }
 
 func (p *Peer) New() {
 	fmt.Println("Initializing new peer...")
@@ -58,25 +56,23 @@ func (p *Peer) New() {
 	port := flag.String("port", "5533", "Port")
 	flag.Parse()
 
-	// Create private key
-	// Generate signing keys
-	_, privKey, err := eddilithium3.GenerateKey(nil)
+	// Generate key pair
+	priv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
 	if err != nil {
 		panic(err)
 	}
-	priv := &eddilithium3.Eddilithium3PrivKey{privKey}
 
-	// priv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Initialized an encrypted badgerDB store
+	// TODO encrypt boltdb
+	p.DB = initPeerStore()
+	defer p.DB.Close()
 
 	fmt.Println("Creating new host...")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Create new host
-	host := createHost(priv, *port, ctx)
+	host := createHost(ctx, priv, *port)
 
 	// Start listening on that host
 	host.SetStreamHandler("/locke/1.0.0", handleStream)
@@ -88,47 +84,18 @@ func (p *Peer) New() {
 
 	host.Network().Listen(addr)
 	defer host.Close()
+	p.Host = host
 
 	// Connect if dest and peerID are supplied arguments
 	if *dest != "" && *peerID != "" {
-		connect(ctx, host, *dest, *peerID)
+		connect(ctx, p, *dest, *peerID)
 	}
 
 	// Keep alive
 	select {}
 }
 
-// CreateIdentity initializes a new identity
-// currently storing key unencrypted. in the future we need to encrypt it.
-// TODO(security)
-func createIdentity() (Identity, error) {
-	ident := Identity{}
-
-	// Generate signing keys
-	pubKey, privKey, err := eddilithium3.GenerateKey(nil)
-	if err != nil {
-		panic(err)
-	}
-
-	ident.PrivKey = &eddilithium3.Eddilithium3PrivKey{privKey}
-
-	// Pack public keys and create peerID
-	packedPubKey, err := pubKey.MarshalBinary()
-	if err != nil {
-		panic(err)
-	}
-
-	id, err := IDFromPublicKey(packedPubKey)
-	if err != nil {
-		return ident, err
-	}
-
-	ident.PeerID = base58.Encode([]byte(id))
-
-	return ident, nil
-}
-
-func createHost(priv crypto.PrivKey, port string, ctx context.Context) host.Host {
+func createHost(ctx context.Context, priv crypto.PrivKey, port string) host.Host {
 	connmgr, err := connmgr.NewConnManager(
 		100, // Lowwater
 		400, // HighWater,
@@ -163,11 +130,4 @@ func createHost(priv crypto.PrivKey, port string, ctx context.Context) host.Host
 	fmt.Printf("Hello World, my hosts ID is %s\n", host.ID())
 
 	return host
-}
-
-// IDFromPublicKey returns the Peer ID corresponding to the public key pk.
-func IDFromPublicKey(b []byte) (string, error) {
-	var alg uint64 = SHA2_256
-	hash, _ := Sum(b, alg, -1)
-	return string(hash), nil
 }

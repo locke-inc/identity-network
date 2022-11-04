@@ -7,10 +7,10 @@ import (
 	"log"
 	"os"
 
+	"github.com/boltdb/bolt"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/peerstore"
-	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -22,8 +22,6 @@ func handleStream(s network.Stream) {
 
 	go readData(rw)
 	go writeData(rw)
-
-	// stream 's' will stay open until you close it (or the other side closes it).
 }
 
 func readData(rw *bufio.ReadWriter) {
@@ -38,7 +36,6 @@ func readData(rw *bufio.ReadWriter) {
 			// Reset console colour: 	\x1b[0m
 			fmt.Printf("\x1b[32m%s\x1b[0m> ", str)
 		}
-
 	}
 }
 
@@ -58,8 +55,8 @@ func writeData(rw *bufio.ReadWriter) {
 	}
 }
 
-func connect(ctx context.Context, h host.Host, destination string, p string) {
-	peerID, err := peer.Decode(p)
+func connect(ctx context.Context, p *Peer, destination string, pid string) {
+	peerID, err := peer.Decode(pid)
 	if err != nil {
 		panic(err)
 	}
@@ -72,18 +69,35 @@ func connect(ctx context.Context, h host.Host, destination string, p string) {
 	// Add the destination's peer multiaddress in the peerstore.
 	// This will be used during connection and stream creation by libp2p.
 	var maddr []multiaddr.Multiaddr
-	h.Peerstore().AddAddrs(peerID, append(maddr, addr), peerstore.PermanentAddrTTL)
-	fmt.Println("Added to peer store:", addr)
-	fmt.Println(h.Peerstore().Addrs(peerID))
+	p.Host.Peerstore().AddAddrs(peerID, append(maddr, addr), peerstore.PermanentAddrTTL)
 
 	// Start a stream with the destination.
 	// Multiaddress of the destination peer is fetched from the peerstore using 'peerId'.
-	str, err := h.NewStream(ctx, peerID, "/locke/1.0.0")
+	str, err := p.Host.NewStream(ctx, peerID, "/locke/1.0.0")
 	if err != nil {
 		log.Println(err)
 		panic(err)
 	}
 
 	log.Println("Established connection to destination")
+
+	// Add to community store
+	err = p.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("connor"))
+		err := b.Put([]byte(pid), []byte("connor"))
+		return err
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Added to store! Let's test")
+
+	connor, err := p.getPerson("connor")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Yay!!", connor)
 	handleStream(str)
 }
