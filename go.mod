@@ -3,6 +3,7 @@ module github.com/locke-inc/identity-network
 go 1.19
 
 require (
+	github.com/boltdb/bolt v1.3.1
 	github.com/cloudflare/circl v1.2.0
 	github.com/connorpeters/locke-dynauth v0.0.0-20210922211155-fb5411f1ee65
 	github.com/ipfs/go-log/v2 v2.5.1
@@ -20,7 +21,6 @@ require (
 require (
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/containerd/cgroups v1.0.4 // indirect

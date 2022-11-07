@@ -10,8 +10,20 @@ import (
 )
 
 // TODO encrypt data at rest
-func initPeerStore() *bolt.DB {
+func InitPeerStore() *bolt.DB {
 	db, err := bolt.Open("locke.db", 0600, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte("people"))
+		if err != nil {
+			return fmt.Errorf("could not create 'people' bucket")
+		}
+
+		return nil
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -22,24 +34,23 @@ func initPeerStore() *bolt.DB {
 // Creates a bucket for a person and initializes a relationship
 // Stores peerIDs and inits a drama for each
 func (p *Peer) addPerson(name string, peers []string) error {
-	// Create bucket with person name and init new drama
 	err := p.DB.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(name))
+		// Create new bucket for person
+		_, err := tx.CreateBucketIfNotExists([]byte(name))
 		if err != nil {
 			return fmt.Errorf("could not create bucket for person: %v", name)
 		}
 
+		// Init new drama for new person
 		var d = CreateDrama(0)
-
-		// Encode new drama to gob in order to store
 		var drama bytes.Buffer
-		enc := gob.NewEncoder(&drama)
-		err = enc.Encode(d)
+		err = gob.NewEncoder(&drama).Encode(d)
 		if err != nil {
 			return err
 		}
 
-		err = b.Put([]byte("relationship"), drama.Bytes())
+		// Then add person to "people" bucket along with drama gob
+		err = tx.Bucket([]byte("people")).Put([]byte(name), drama.Bytes())
 		return err
 	})
 
@@ -56,11 +67,10 @@ func (p *Peer) addPerson(name string, peers []string) error {
 
 func addPeer(p *Peer, name string, peerID string) error {
 	fmt.Println("Adding peer:", peerID)
-	var d = CreateDrama(0)
 
+	var d = CreateDrama(0)
 	var drama bytes.Buffer
-	enc := gob.NewEncoder(&drama)
-	err := enc.Encode(d)
+	err := gob.NewEncoder(&drama).Encode(d)
 	if err != nil {
 		return err
 	}
@@ -102,6 +112,28 @@ func (p *Peer) getPerson(name string) (Person, error) {
 	})
 
 	return person, nil
+}
+
+func (p *Peer) getAllPeople() (people []Person, err error) {
+	err = p.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("people"))
+		b.ForEach(func(k, v []byte) error {
+			person, err := p.getPerson(string(k))
+			if err != nil {
+				return err
+			}
+
+			people = append(people, person)
+			return nil
+		})
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return people, nil
 }
 
 func blockchainMessage() {

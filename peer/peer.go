@@ -64,7 +64,7 @@ func (p *Peer) New() {
 
 	// Initialized an encrypted badgerDB store
 	// TODO encrypt boltdb
-	p.DB = initPeerStore()
+	p.DB = InitPeerStore()
 	defer p.DB.Close()
 
 	fmt.Println("Creating new host...")

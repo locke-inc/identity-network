@@ -80,20 +80,7 @@ func connect(ctx context.Context, p *Peer, destination string, pid string) {
 
 	log.Println("Established connection to destination")
 
-	// Add to community store
-	var peers []string
-	err = p.addPerson("connor", append(peers, pid))
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Added to store! Let's test")
-	connor, err := p.getPerson("connor")
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Yay!!", connor)
-	fmt.Println("Peers:", connor.Peers)
+	// Add peer to local store
+	p.handshake(pid)
 	handleStream(str)
 }
