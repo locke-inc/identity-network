@@ -17,6 +17,16 @@ type Block struct {
 	Pow          int
 }
 
+type Transaction struct {
+	Requester   string // peerID that initiated the transaction
+	RequestType string // "auth" for example
+
+	Responder   string // peerID that responded
+	Result      int    // for now let's say it's between 0 and 100%
+	Application string // context for what the request is for
+	ProcessTime time.Duration
+}
+
 func (b Block) calculateHash() string {
 	data, _ := json.Marshal(b.Data)
 	blockData := b.PreviousHash + string(data) + b.Timestamp.String() + strconv.Itoa(b.Pow)

@@ -16,6 +16,8 @@ func (p *Peer) handshake(pid string) {
 
 	fmt.Println("Added " + pid + " to local store")
 
+	// Should generate a shared sym key here? Prolly
+
 	// Broadcast this to all other owned peers so they can handshake
 	// If they don't ALL return a "success" msg then it failed
 }

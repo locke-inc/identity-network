@@ -9,6 +9,10 @@ import (
 	"github.com/boltdb/bolt"
 )
 
+const (
+	ReservedWord_Owner = "me"
+)
+
 // TODO encrypt data at rest
 func InitPeerStore() *bolt.DB {
 	db, err := bolt.Open("locke.db", 0600, nil)
@@ -16,6 +20,7 @@ func InitPeerStore() *bolt.DB {
 		log.Fatal(err)
 	}
 
+	// Create "people" bucket and add yourself to it
 	err = db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte("people"))
 		if err != nil {
@@ -56,7 +61,7 @@ func (p *Peer) addPerson(name string, peers []string) error {
 
 	// Add all peers to bucket and init new dramas for each
 	for i := 0; i < len(peers); i++ {
-		err = addPeer(p, name, peers[i])
+		err = p.addPeer(name, peers[i])
 		if err != nil {
 			fmt.Print(err)
 			return err
@@ -65,7 +70,7 @@ func (p *Peer) addPerson(name string, peers []string) error {
 	return err
 }
 
-func addPeer(p *Peer, name string, peerID string) error {
+func (p *Peer) addPeer(name string, peerID string) error {
 	fmt.Println("Adding peer:", peerID)
 
 	var d = CreateDrama(0)
@@ -134,19 +139,4 @@ func (p *Peer) getAllPeople() (people []Person, err error) {
 	}
 
 	return people, nil
-}
-
-func blockchainMessage() {
-	// Peers handshake
-	// How do they identify the person? "Owner" = LAN dht
-
-	// Two devices are advertising at the same time and "pair"
-	// They send each other their owner DHT
-	// Person -> []PeerID -> Blockchain message
-	// Person is populated and a startRelationship() request is sent to every peerID
-	// newRelationshipDrama() a drama being the "receipt" or the "script" of how the relationship plays out
-	// So every peer in your owner and their owner DHT have a drama with each other
-	//
-
-	// Send identifyYourself(zk proof)
 }

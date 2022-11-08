@@ -127,7 +127,7 @@ func createHost(ctx context.Context, priv crypto.PrivKey, port string) host.Host
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Hello World, my hosts ID is %s\n", host.ID())
+	fmt.Printf("Peer ID is: %s, address is: %s", host.ID(), host.Addrs())
 
 	return host
 }
