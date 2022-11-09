@@ -1,3 +1,4 @@
+// Authenticates OTHERS ---> essentially the server side
 package peer
 
 import "errors"

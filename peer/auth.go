@@ -23,7 +23,7 @@ func authenticate(ctx context.Context, p *Peer, application string) {
 
 // TODO generic af name
 func queryPerson(ctx context.Context, p *Peer, person Person, app string) string {
-	for peerID, _ := range person.Peers {
+	for peerID := range person.Peers {
 		pid, err := peer.Decode(peerID)
 		if err != nil {
 			panic(err)

@@ -1,3 +1,10 @@
+## TODO
+I'm thinking that it makes sense to break down protocols into Events or Actions similar to how NGRX does it. I like the syntax of defining everything that happen, and the defining how it does happen.
+
+Especially since we are dealing with Hosts -- devices that are both a client and a server. Both sends and receives data. So it can get sorta messy quickly. Would like to figure out an elegant way of defining the events that are sent and the events that are received.
+
+FOR NOW using serveFunctionName and receiveFunctionName to clarify a lil
+
 ## Personal nodes (peers):
 Peers are used for locating other peers using the DHT, and are also used to ask questions (zero-knowledge proofs) to verify that a peer is who they claim to be. A lookout node is just a personal node hosted by Locke with a few additional algorithms to provide assurances.
 

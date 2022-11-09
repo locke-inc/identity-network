@@ -36,10 +36,9 @@ type Peer struct {
 	Host host.Host
 	DB   *bolt.DB
 
-	// A person is defined by all the peers they own
-	// This peer being one of them
-	// Therefore the owner is represented as a LAN
-	OwnerLAN *dht.IpfsDHT
+	// A person is defined by all the peers they own and all the relationships those peers have
+	// Therefore you are all your peers and their relationships
+	Me Person
 }
 
 // type Identity struct {
@@ -54,6 +53,7 @@ func (p *Peer) New() {
 	dest := flag.String("dest", "", "Destination multiaddr string")
 	peerID := flag.String("peer", "", "Peer ID")
 	port := flag.String("port", "5533", "Port")
+	name := flag.String("name", "connor", "Your name")
 	flag.Parse()
 
 	// Generate key pair
@@ -62,7 +62,6 @@ func (p *Peer) New() {
 		panic(err)
 	}
 
-	// Initialized an encrypted badgerDB store
 	// TODO encrypt boltdb
 	p.DB = InitPeerStore()
 	defer p.DB.Close()
@@ -74,8 +73,15 @@ func (p *Peer) New() {
 	// Create new host
 	host := createHost(ctx, priv, *port)
 
+	// Add self to peer store
+	p.Me.ID = *name
+	// p.Me.Peers[host.ID().String()] = CreateDrama(0)
+	p.addNewPerson(p.Me)
+
+	fmt.Println("Yes! I am a person:", p.Me)
+
 	// Start listening on that host
-	host.SetStreamHandler("/locke/1.0.0", handleStream)
+	host.SetStreamHandler("/locke/1.0.0", p.handleHandshake)
 
 	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", *port))
 	if err != nil {

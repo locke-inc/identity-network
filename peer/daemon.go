@@ -80,7 +80,7 @@ func connect(ctx context.Context, p *Peer, destination string, pid string) {
 
 	log.Println("Established connection to destination")
 
-	// Add peer to local store
-	p.handshake(pid)
-	handleStream(str)
+	// Send a handshake
+	p.handleHandshake(str)
+	// handleStream(str)
 }

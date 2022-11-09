@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	ReservedWord_Owner = "me"
+	Prefix_Peer     = "peer_"
+	Prefix_KeyShard = "key_"
 )
 
 // TODO encrypt data at rest
@@ -20,7 +21,7 @@ func InitPeerStore() *bolt.DB {
 		log.Fatal(err)
 	}
 
-	// Create "people" bucket and add yourself to it
+	// Create "people" bucket
 	err = db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte("people"))
 		if err != nil {
@@ -38,12 +39,12 @@ func InitPeerStore() *bolt.DB {
 
 // Creates a bucket for a person and initializes a relationship
 // Stores peerIDs and inits a drama for each
-func (p *Peer) addPerson(name string, peers []string) error {
+func (p *Peer) addNewPerson(person Person) error {
 	err := p.DB.Update(func(tx *bolt.Tx) error {
 		// Create new bucket for person
-		_, err := tx.CreateBucketIfNotExists([]byte(name))
+		_, err := tx.CreateBucketIfNotExists([]byte(person.ID))
 		if err != nil {
-			return fmt.Errorf("could not create bucket for person: %v", name)
+			return fmt.Errorf("could not create bucket for person: %v", person.ID)
 		}
 
 		// Init new drama for new person
@@ -55,13 +56,13 @@ func (p *Peer) addPerson(name string, peers []string) error {
 		}
 
 		// Then add person to "people" bucket along with drama gob
-		err = tx.Bucket([]byte("people")).Put([]byte(name), drama.Bytes())
+		err = tx.Bucket([]byte("people")).Put([]byte(person.ID), drama.Bytes())
 		return err
 	})
 
-	// Add all peers to bucket and init new dramas for each
-	for i := 0; i < len(peers); i++ {
-		err = p.addPeer(name, peers[i])
+	// Add all peers to person's bucket and init new dramas for each
+	for peerID, _ := range person.Peers {
+		err = p.addPeer(person.ID, peerID)
 		if err != nil {
 			fmt.Print(err)
 			return err
@@ -82,7 +83,19 @@ func (p *Peer) addPeer(name string, peerID string) error {
 
 	err = p.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(name))
-		err := b.Put([]byte(peerID), drama.Bytes())
+		err := b.Put([]byte(Prefix_Peer+peerID), drama.Bytes())
+		return err
+	})
+
+	return err
+}
+
+func (p *Peer) addKey(person string, keyName string, key string) error {
+	fmt.Println("Adding key:", keyName)
+
+	err := p.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(person))
+		err := b.Put([]byte(Prefix_KeyShard+keyName), []byte(key))
 		return err
 	})
 
@@ -98,8 +111,8 @@ func (p *Peer) getPerson(name string) (Person, error) {
 	p.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(name))
 		c := b.Cursor()
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-
+		// Get all the person's peers
+		for k, v := c.Seek([]byte(Prefix_Peer)); k != nil && bytes.HasPrefix(k, []byte(Prefix_Peer)); k, v = c.Next() {
 			// Decode drama from gob
 			buf := bytes.NewBuffer(v)
 			dec := gob.NewDecoder(buf)
@@ -109,7 +122,6 @@ func (p *Peer) getPerson(name string) (Person, error) {
 				return err
 			}
 
-			fmt.Println("Got gob!!", drama)
 			person.Peers[string(k)] = drama
 		}
 
