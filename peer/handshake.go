@@ -3,33 +3,87 @@ package peer
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/gob"
 	"fmt"
+	"log"
 
 	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/peer"
+	gorpc "github.com/libp2p/go-libp2p-gorpc"
+	"github.com/libp2p/go-libp2p/core/host"
 )
 
-type EventHandshake struct {
+const (
+	HandshakeProtocolID = "/locke/handshake"
+	// IdentifyYourselfEndpoint      = HandshakeProtocolID + "/id_self/1.0.0"
+	// StartRelationshipEndpoint = HandshakeProtocolID + "/start_relationship/1.0.0"
+)
+
+type HandshakeArgs struct {
+	Key []byte
+}
+type HandshakeReply struct {
+	Who Person
+}
+type HandshakeService struct {
+	Person
 }
 
-func (p *Peer) handleHandshake(s network.Stream) {
-	// Create a buffer stream for non blocking read and write.
+func (me *HandshakeService) IdentifyYourself(ctx context.Context, argType HandshakeArgs, replyType *HandshakeReply) error {
+	log.Println("Received a Ping call")
+	replyType.Who = me.Person
+	return nil
+}
+
+func (t *HandshakeService) StartRelationship(ctx context.Context, argType HandshakeArgs, replyType *HandshakeReply) error {
+	// log.Println("Received a Ping call")
+	// replyType.Data = argType.Data
+	return nil
+}
+
+func initiateHandshake(host host.Host, dest peer.ID) {
+	rpcClient := gorpc.NewClient(host, HandshakeProtocolID)
+
+	var reply HandshakeReply
+	var args HandshakeArgs
+
+	// Auth would happen here
+	b := make([]byte, 32)
+	args.Key = b
+
+	err := rpcClient.Call(dest, "HandshakeService", "IdentifyYourself", args, &reply)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Got the call back I guess:", reply.Who)
+}
+
+func (p *Peer) listenForHandshake() {
+	rpcHost := gorpc.NewServer(p.Host, HandshakeProtocolID)
+
+	svc := HandshakeService{
+		p.Me,
+	}
+	err := rpcHost.Register(&svc)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Done")
+}
+
+// (1) A handshake starts by each peer identifying their owner (self)
+func (p *Peer) identifySelf(s network.Stream) {
 	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-
-	go serveHandshake(rw, p.Me)
-	go receiveHandshake(rw, p)
-}
-
-func serveHandshake(stream *bufio.ReadWriter, self Person) {
-	fmt.Println("Serving a handshake!", self)
-	sendSelf(stream, self)
-	sendDrama(stream, self)
-	// Create a new drama for this relationship
-	// TODO how is it decided who starts the relationship? Whoever serves first right?
-
+	go sendSelf(rw, p.Me)
+	go receiveThem(rw, p)
 }
 
 func sendSelf(stream *bufio.ReadWriter, self Person) {
+	fmt.Println("Sending self...")
+
 	// Encode self and send downstream
 	var conn bytes.Buffer
 	err := gob.NewEncoder(&conn).Encode(self)
@@ -44,7 +98,27 @@ func sendSelf(stream *bufio.ReadWriter, self Person) {
 	stream.Flush()
 }
 
-func sendDrama(stream *bufio.ReadWriter, self Person) {
+func receiveThem(stream *bufio.ReadWriter, p *Peer) {
+	// Read from stream and decode gob
+	var them Person
+	if err := gob.NewDecoder(stream).Decode(&them); err != nil {
+		panic(err)
+	}
+
+	// Store
+	p.addNewPerson(them)
+	fmt.Println("Received them:", them)
+}
+
+// (2) A handshake continues by the peers establishing a new drama
+func startDrama(s network.Stream) {
+	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
+	go sendDrama(rw)
+	go receiveDrama(rw)
+}
+
+func sendDrama(stream *bufio.ReadWriter) {
+	fmt.Println("Sending drama")
 	var conn bytes.Buffer
 	var d = CreateDrama(0)
 	err := gob.NewEncoder(&conn).Encode(d)
@@ -59,37 +133,7 @@ func sendDrama(stream *bufio.ReadWriter, self Person) {
 	stream.Flush()
 }
 
-func receiveHandshake(stream *bufio.ReadWriter, p *Peer) {
-	id := receiveThem(stream, p)
-
-	// Test
-	fmt.Println("New handshake is stored")
-	them2, err := p.getPerson(id)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("What was stored:", them2)
-
-	receiveDrama(stream)
-}
-
-func receiveThem(stream *bufio.ReadWriter, p *Peer) string {
-	// Read from stream and decode gob
-	var them Person
-	if err := gob.NewDecoder(stream).Decode(&them); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Received handshake gob!", them)
-
-	// Store
-	p.addNewPerson(them)
-	return them.ID
-}
-
 func receiveDrama(stream *bufio.ReadWriter) {
-
 	var drama Drama
 	if err := gob.NewDecoder(stream).Decode(&drama); err != nil {
 		panic(err)
@@ -98,18 +142,3 @@ func receiveDrama(stream *bufio.ReadWriter) {
 }
 
 // TODO https://github.com/libp2p/specs/blob/master/discovery/mdns.md - Allows peers on same network to discover each other easily
-func (p *Peer) handshake(person Person) {
-	// TODO Check if this peer is already in store
-	// Add person to community store
-	err := p.addNewPerson(person)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Added " + person.ID + " to local store")
-
-	// Should generate a shared sym key here? Prolly
-
-	// Broadcast this to all other owned peers so they can handshake
-	// If they don't ALL return a "success" msg then it failed
-}

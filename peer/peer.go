@@ -46,6 +46,9 @@ type Peer struct {
 // 	PrivKey crypto.PrivKey `json:",omitempty"`
 // }
 
+// TODO I've been very liberal using *Peer as an interface for functions
+// At some point a legit peer interface should be defined
+// And any function that doesn't make sense to be in that interface should instead take *Peer as an argument
 func (p *Peer) New() {
 	fmt.Println("Initializing new peer...")
 
@@ -80,9 +83,6 @@ func (p *Peer) New() {
 
 	fmt.Println("Yes! I am a person:", p.Me)
 
-	// Start listening on that host
-	host.SetStreamHandler("/locke/1.0.0", p.handleHandshake)
-
 	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", *port))
 	if err != nil {
 		panic(err)
@@ -91,6 +91,10 @@ func (p *Peer) New() {
 	host.Network().Listen(addr)
 	defer host.Close()
 	p.Host = host
+
+	// Start listening for handshakes
+	// p.initHandshakeProtocol()
+	p.listenForHandshake()
 
 	// Connect if dest and peerID are supplied arguments
 	if *dest != "" && *peerID != "" {

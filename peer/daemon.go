@@ -72,15 +72,17 @@ func connect(ctx context.Context, p *Peer, destination string, pid string) {
 
 	// Start a stream with the destination.
 	// Multiaddress of the destination peer is fetched from the peerstore using 'peerId'.
-	str, err := p.Host.NewStream(ctx, peerID, "/locke/1.0.0")
-	if err != nil {
-		log.Println(err)
-		panic(err)
-	}
+	// str, err := p.Host.NewStream(ctx, peerID, HandshakeProtocolID)
+	// if err != nil {
+	// 	log.Println(err)
+	// 	panic(err)
+	// }
 
-	log.Println("Established connection to destination")
+	// log.Println("Established connection to destination")
 
-	// Send a handshake
-	p.handleHandshake(str)
-	// handleStream(str)
+	// // Send a handshake
+	// p.identifySelf(str)
+
+	initiateHandshake(p.Host, peerID)
+
 }
