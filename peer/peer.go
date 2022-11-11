@@ -20,25 +20,13 @@ import (
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 )
 
-/*
- 1. Each peer bootstraps itself with a Gateway node
- 2. Each peer has a DHT list of people it knows
- 3. Each peer has a NameSystem to enable human readable usernames
- 4. Each peer can handshake with other peers using a private key made by
-    Crystals Kyber for e2e encryption between them. This looks the same for
-    lookout nodes as it does for personal nodes.
- 5. Each peer participates in community auth (peers coming to a consensus
-    of how likely a given peer is to be who they claim to be). MAYBE?: Each
-    auth attempt has a blockchain (essentially a merkle tree) as the message
-    structure to create immutable receipts.
-*/
 type Peer struct {
 	Host host.Host
 	DB   *bolt.DB
 
 	// A person is defined by all the peers they own and all the relationships those peers have
-	// Therefore you are all your peers and their relationships
-	Me Person
+	// Therefore your "self" is all your peers and their relationships
+	Self Person
 }
 
 // type Identity struct {
@@ -77,11 +65,9 @@ func (p *Peer) New() {
 	host := createHost(ctx, priv, *port)
 
 	// Add self to peer store
-	p.Me.ID = *name
+	p.Self.ID = *name
 	// p.Me.Peers[host.ID().String()] = CreateDrama(0)
-	p.addNewPerson(p.Me)
-
-	fmt.Println("Yes! I am a person:", p.Me)
+	p.addNewPerson(&p.Self)
 
 	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", *port))
 	if err != nil {
@@ -95,6 +81,7 @@ func (p *Peer) New() {
 	// Start listening for handshakes
 	// p.initHandshakeProtocol()
 	p.listenForHandshake()
+	p.listenForCoordination()
 
 	// Connect if dest and peerID are supplied arguments
 	if *dest != "" && *peerID != "" {

@@ -20,6 +20,19 @@ func CreateDrama(difficulty int) Drama {
 	}
 }
 
+func InitDrama(difficulty int, t Transaction) Drama {
+	genesisBlock := Block{
+		Data:      t,
+		Hash:      "0",
+		Timestamp: time.Now(),
+	}
+	return Drama{
+		genesisBlock,
+		[]Block{genesisBlock},
+		difficulty,
+	}
+}
+
 func (b *Drama) addBlock(t Transaction) {
 	lastBlock := b.Chain[len(b.Chain)-1]
 	newBlock := Block{

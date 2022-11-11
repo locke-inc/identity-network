@@ -39,7 +39,7 @@ func InitPeerStore() *bolt.DB {
 
 // Creates a bucket for a person and initializes a relationship
 // Stores peerIDs and inits a drama for each
-func (p *Peer) addNewPerson(person Person) error {
+func (p *Peer) addNewPerson(person *Person) error {
 	err := p.DB.Update(func(tx *bolt.Tx) error {
 		// Create new bucket for person
 		_, err := tx.CreateBucketIfNotExists([]byte(person.ID))
@@ -62,7 +62,8 @@ func (p *Peer) addNewPerson(person Person) error {
 
 	// Add all peers to person's bucket and init new dramas for each
 	for peerID, _ := range person.Peers {
-		err = p.addPeer(person.ID, peerID)
+		d := CreateDrama(0)
+		err = p.addPeer(person.ID, peerID, &d)
 		if err != nil {
 			fmt.Print(err)
 			return err
@@ -71,10 +72,9 @@ func (p *Peer) addNewPerson(person Person) error {
 	return err
 }
 
-func (p *Peer) addPeer(name string, peerID string) error {
-	fmt.Println("Adding peer:", peerID)
+func (p *Peer) addPeer(name string, pid string, d *Drama) error {
+	fmt.Println("Adding peer:", pid)
 
-	var d = CreateDrama(0)
 	var drama bytes.Buffer
 	err := gob.NewEncoder(&drama).Encode(d)
 	if err != nil {
@@ -82,8 +82,12 @@ func (p *Peer) addPeer(name string, peerID string) error {
 	}
 
 	err = p.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(name))
-		err := b.Put([]byte(Prefix_Peer+peerID), drama.Bytes())
+		b, err := tx.CreateBucketIfNotExists([]byte(name))
+		if err != nil {
+			return err
+		}
+
+		err = b.Put([]byte(Prefix_Peer+pid), drama.Bytes())
 		return err
 	})
 

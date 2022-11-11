@@ -5,140 +5,157 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"strings"
+	"time"
 
-	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/boltdb/bolt"
 	"github.com/libp2p/go-libp2p-core/peer"
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/patrickmn/go-cache"
 )
 
 const (
 	HandshakeProtocolID = "/locke/handshake"
-	// IdentifyYourselfEndpoint      = HandshakeProtocolID + "/id_self/1.0.0"
-	// StartRelationshipEndpoint = HandshakeProtocolID + "/start_relationship/1.0.0"
+	TempPeerBucket      = "tmp"
 )
 
-type HandshakeArgs struct {
-	Key []byte
-}
-type HandshakeReply struct {
-	Who Person
-}
 type HandshakeService struct {
-	Person
+	Cache *cache.Cache
+	Peer  *Peer
 }
 
-func (me *HandshakeService) IdentifyYourself(ctx context.Context, argType HandshakeArgs, replyType *HandshakeReply) error {
-	log.Println("Received a Ping call")
-	replyType.Who = me.Person
-	return nil
+type StartRelationshipArgs struct {
+	CallingPeerID string
 }
 
-func (t *HandshakeService) StartRelationship(ctx context.Context, argType HandshakeArgs, replyType *HandshakeReply) error {
-	// log.Println("Received a Ping call")
-	// replyType.Data = argType.Data
-	return nil
+type VerifyOTPArgs struct {
+	CallingPeerID string
+	OTP           string
 }
 
-func initiateHandshake(host host.Host, dest peer.ID) {
+func InitHandshake(host host.Host, dest peer.ID) {
+	fmt.Println("Initiating handshake...")
 	rpcClient := gorpc.NewClient(host, HandshakeProtocolID)
 
-	var reply HandshakeReply
-	var args HandshakeArgs
-
-	// Auth would happen here
-	b := make([]byte, 32)
-	args.Key = b
-
-	err := rpcClient.Call(dest, "HandshakeService", "IdentifyYourself", args, &reply)
+	args1 := StartRelationshipArgs{
+		CallingPeerID: host.ID().String(),
+	}
+	var reply Drama
+	err := rpcClient.Call(dest, "HandshakeService", "StartRelationship", args1, &reply)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Got the call back I guess:", reply.Who)
-}
+	fmt.Println("Ok, they're ready for me to send them an OTP. Here's the drama:\n", reply)
 
-func (p *Peer) listenForHandshake() {
-	rpcHost := gorpc.NewServer(p.Host, HandshakeProtocolID)
-
-	svc := HandshakeService{
-		p.Me,
-	}
-	err := rpcHost.Register(&svc)
+	// Input OTP
+	stdReader := bufio.NewReader(os.Stdin)
+	fmt.Print("> ")
+	otp, err := stdReader.ReadString('\n')
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return
 	}
 
-	fmt.Println("Done")
-}
-
-// (1) A handshake starts by each peer identifying their owner (self)
-func (p *Peer) identifySelf(s network.Stream) {
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-	go sendSelf(rw, p.Me)
-	go receiveThem(rw, p)
-}
-
-func sendSelf(stream *bufio.ReadWriter, self Person) {
-	fmt.Println("Sending self...")
-
-	// Encode self and send downstream
-	var conn bytes.Buffer
-	err := gob.NewEncoder(&conn).Encode(self)
-	if err != nil {
-		panic(err)
+	args2 := VerifyOTPArgs{
+		CallingPeerID: host.ID().String(),
+		OTP:           otp,
 	}
-
-	i, err := stream.Write(conn.Bytes())
-	if i == 0 || err != nil {
-		panic(err)
-	}
-	stream.Flush()
-}
-
-func receiveThem(stream *bufio.ReadWriter, p *Peer) {
-	// Read from stream and decode gob
 	var them Person
-	if err := gob.NewDecoder(stream).Decode(&them); err != nil {
-		panic(err)
-	}
-
-	// Store
-	p.addNewPerson(them)
-	fmt.Println("Received them:", them)
-}
-
-// (2) A handshake continues by the peers establishing a new drama
-func startDrama(s network.Stream) {
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-	go sendDrama(rw)
-	go receiveDrama(rw)
-}
-
-func sendDrama(stream *bufio.ReadWriter) {
-	fmt.Println("Sending drama")
-	var conn bytes.Buffer
-	var d = CreateDrama(0)
-	err := gob.NewEncoder(&conn).Encode(d)
+	err = rpcClient.Call(dest, "HandshakeService", "VerifyOTP", args2, &them)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	i, err := stream.Write(conn.Bytes())
-	if i == 0 || err != nil {
-		panic(err)
-	}
-	stream.Flush()
+	fmt.Println("Ok got them!", them.ID)
 }
 
-func receiveDrama(stream *bufio.ReadWriter) {
-	var drama Drama
-	if err := gob.NewDecoder(stream).Decode(&drama); err != nil {
-		panic(err)
+// StartRelationship is a peer-to-peer function, with this being the receiver peer.
+// The receiver peer handles the coordination of everything
+func (s *HandshakeService) StartRelationship(ctx context.Context, args StartRelationshipArgs, reply *Drama) error {
+	// Time the process to record in the drama
+	start := time.Now()
+
+	// Generate an OTP and store in memory
+	fmt.Println("Generating an OTP")
+	otp, err := generateOTP(6)
+	if err != nil {
+		return err
 	}
-	fmt.Println("New drama received: check it:", drama)
+	fmt.Println(otp)
+	s.Cache.Set(args.CallingPeerID, otp, cache.DefaultExpiration)
+
+	// Send the otp to your other peers so any of them can authenticate the start of this relationship
+	s.Peer.Self.initiateCoordination(s.Peer.Host, otp)
+
+	// Create new drama to record and to send back
+	t := Transaction{
+		Requester:   args.CallingPeerID,
+		RequestType: "handshake",
+		Responder:   s.Peer.Self.ID,
+		Result:      0,
+		Application: "init handshake",
+		ProcessTime: time.Since(start),
+	}
+	drama := InitDrama(0, t)
+	fmt.Println("Drama made. Storing...", drama)
+	err = s.Peer.addPeer(TempPeerBucket, args.CallingPeerID, &drama)
+	if err != nil {
+		return err
+	}
+
+	// Send back
+	*reply = drama
+	fmt.Println("Process took:", t.ProcessTime)
+	return nil
+}
+
+func (s *HandshakeService) VerifyOTP(ctx context.Context, args VerifyOTPArgs, reply *Person) error {
+	// First check this peer's history
+	var drama Drama
+	err := s.Peer.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(TempPeerBucket))
+		v := b.Get([]byte(Prefix_Peer + args.CallingPeerID))
+		// Decode drama from gob
+		buf := bytes.NewBuffer(v)
+		dec := gob.NewDecoder(buf)
+		if err := dec.Decode(&drama); err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Parse drama to ensure it's valid and peer can be trusted
+	// For instance if it's blacklisted can be denied completely
+	fmt.Println("Got drama from store:", drama)
+
+	log.Println("Verifying OTP, received:", args.CallingPeerID)
+	var cachedOTP string
+	x, found := s.Cache.Get(args.CallingPeerID)
+	if !found {
+		return errors.New("No cached OTP to compare")
+	}
+
+	cachedOTP = x.(string)
+	fmt.Println("Got:", cachedOTP)
+
+	if strings.TrimRight(args.OTP, "\n") != cachedOTP {
+		return errors.New("OTP did not match")
+	}
+
+	fmt.Println("Yay it matched! I'm:", s.Peer.Self)
+	s.Cache.Delete(args.CallingPeerID) // for safety
+	*reply = s.Peer.Self
+	return nil
 }
 
 // TODO https://github.com/libp2p/specs/blob/master/discovery/mdns.md - Allows peers on same network to discover each other easily
