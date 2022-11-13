@@ -1,1 +1,1 @@
-go run main.go -name connorClient -dest /ip4/54.197.20.70/udp/5533/quic -peer QmNtuS5ZwVJVGZ39j5CD5Shi3UgLwkUKhehVxt6BqtkEuF
+go run main.go -name connorClient -dest /ip4/54.197.20.70/udp/5533/quic -peer QmTXhSy1AfusnSLgZ3jefjQVhQHfpteBxv7QfY9q3i8jkV

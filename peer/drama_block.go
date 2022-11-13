@@ -10,7 +10,8 @@ import (
 )
 
 type Block struct {
-	Data         Transaction
+	Data         []byte // Gob encoded Transaction, encrypted into bytes
+	Nonce        []byte
 	Hash         string
 	PreviousHash string
 	Timestamp    time.Time

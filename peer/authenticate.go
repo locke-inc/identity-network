@@ -21,16 +21,21 @@ type AuthService struct {
 	Peer  *Peer
 }
 
+type AuthPersonArgs struct {
+	Caller string
+	Key    string // what key do they need to send to prove that it's a legit request?
+}
+
 func InitAuthentication(host host.Host, dest peer.ID) {
 	fmt.Println("Initiating authentication...")
 	rpcClient := gorpc.NewClient(host, AuthProtocolID)
 
 	// First call
-	args1 := StartRelationshipArgs{
+	args := StartRelationshipArgs{
 		CallingPeerID: host.ID().String(),
 	}
 	var reply Drama
-	err := rpcClient.Call(dest, "AuthService", "StartRelationship", args1, &reply)
+	err := rpcClient.Call(dest, "AuthService", "AuthenticatePerson", args, &reply)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,11 +43,12 @@ func InitAuthentication(host host.Host, dest peer.ID) {
 
 // Let's say that this is the function that the gateways call directly
 // So it also includes locating the person
-func (s *AuthService) AuthenticatePerson(ctx context.Context, args VerifyOTPArgs, reply *Person) error {
+func (s *AuthService) AuthenticatePerson(ctx context.Context, args AuthPersonArgs, reply *Person) error {
+	// Locate person through the DHT somehow
 	return nil
 }
 
-func authenticate(ctx context.Context, p *Peer, application string) {
+func authenticateSelf(ctx context.Context, p *Peer, application string) {
 	people, err := p.getAllPeople()
 	if err != nil {
 		panic(err)
@@ -58,14 +64,14 @@ func authenticate(ctx context.Context, p *Peer, application string) {
 
 func queryPerson(ctx context.Context, p *Peer, person Person, app string) string {
 	for peerID := range person.Peers {
-		pid, err := peer.Decode(peerID)
+		_, err := peer.Decode(peerID)
 		if err != nil {
 			panic(err)
 		}
 
 		// TODO Send request to peerID
-		str, err := p.Host.NewStream(ctx, pid, "/locke/1.0.0")
-		handleStream(str)
+		// str, err := p.Host.NewStream(ctx, pid, "/locke/1.0.0")
+		// handleStream(str)
 	}
 
 	return "this would be a key shard"

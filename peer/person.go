@@ -28,8 +28,9 @@ type Person struct {
 // }
 
 type CoordinateOTPArgs struct {
-	CallingPeerID string
-	OTP           string
+	CallingPeerID      string
+	CoordinatingPeerID string
+	OTP                string
 }
 
 // CoordinateOTP ingests an OTP from another peer you own who is coordinating a handshake
@@ -77,7 +78,8 @@ func (p *Person) initiateCoordination(host host.Host, otp string) {
 		}
 
 		args := CoordinateOTPArgs{
-			CallingPeerID: host.ID().String(), // Okkk so is this the original request of the OTP or the Host that received the request that is now coordinating?
+			CallingPeerID:      "TODO", // Okkk so is this the original request of the OTP or the Host that received the request that is now coordinating?
+			CoordinatingPeerID: host.ID().String(),
 		}
 		var reply bool
 		err = rpcClient.Call(dest, "HandshakeService", "CoordinateOTP", args, &reply)

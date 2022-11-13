@@ -94,12 +94,12 @@ func (p *Peer) addPeer(name string, pid string, d *Drama) error {
 	return err
 }
 
-func (p *Peer) addKey(person string, keyName string, key string) error {
+func (p *Peer) addKey(person string, keyName string, key []byte) error {
 	fmt.Println("Adding key:", keyName)
 
 	err := p.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(person))
-		err := b.Put([]byte(Prefix_KeyShard+keyName), []byte(key))
+		err := b.Put([]byte(Prefix_KeyShard+keyName), key)
 		return err
 	})
 

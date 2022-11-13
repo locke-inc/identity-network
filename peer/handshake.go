@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/patrickmn/go-cache"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 const (
@@ -36,6 +38,11 @@ type StartRelationshipArgs struct {
 type VerifyOTPArgs struct {
 	CallingPeerID string
 	OTP           string
+}
+
+type VerifyOTPResponse struct {
+	Them   Person
+	SymKey []byte
 }
 
 func InitHandshake(host host.Host, dest peer.ID) {
@@ -66,13 +73,16 @@ func InitHandshake(host host.Host, dest peer.ID) {
 		CallingPeerID: host.ID().String(),
 		OTP:           otp,
 	}
-	var them Person
-	err = rpcClient.Call(dest, "HandshakeService", "VerifyOTP", args2, &them)
+	var resp VerifyOTPResponse
+	err = rpcClient.Call(dest, "HandshakeService", "VerifyOTP", args2, &resp)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Ok got them!", them.ID)
+	fmt.Println("Ok got them!", resp)
+
+	// TODO now need to send them ourselves to finish the handshake
+	// Store symkey and all that
 }
 
 // StartRelationship is a peer-to-peer function, with this being the receiver peer.
@@ -81,19 +91,23 @@ func (s *HandshakeService) StartRelationship(ctx context.Context, args StartRela
 	// Time the process to record in the drama
 	start := time.Now()
 
-	// Generate an OTP and store in memory
+	// Generate an OTP
 	fmt.Println("Generating an OTP")
 	otp, err := generateOTP(6)
 	if err != nil {
 		return err
 	}
+
+	// Display OTP for manual sharing
 	fmt.Println(otp)
+
+	// Cache OTP for later comparison
 	s.Cache.Set(args.CallingPeerID, otp, cache.DefaultExpiration)
 
-	// Send the otp to your other peers so any of them can authenticate the start of this relationship
-	s.Peer.Self.initiateCoordination(s.Peer.Host, otp)
+	// TODO Send the otp to your other peers so any of them can authenticate the start of this relationship
+	// s.Peer.Self.initiateCoordination(s.Peer.Host, otp)
 
-	// Create new drama to record and to send back
+	// Create new transaction to record into drama
 	t := Transaction{
 		Requester:   args.CallingPeerID,
 		RequestType: "handshake",
@@ -102,7 +116,10 @@ func (s *HandshakeService) StartRelationship(ctx context.Context, args StartRela
 		Application: "init handshake",
 		ProcessTime: time.Since(start),
 	}
-	drama := InitDrama(0, t)
+	drama := CreateDrama(0)
+
+	// Add an unencrypted block since this peer is not established as trusted yet and this information should be public
+	drama.addUnencryptedBlock(t)
 	fmt.Println("Drama made. Storing...", drama)
 	err = s.Peer.addPeer(TempPeerBucket, args.CallingPeerID, &drama)
 	if err != nil {
@@ -115,7 +132,7 @@ func (s *HandshakeService) StartRelationship(ctx context.Context, args StartRela
 	return nil
 }
 
-func (s *HandshakeService) VerifyOTP(ctx context.Context, args VerifyOTPArgs, reply *Person) error {
+func (s *HandshakeService) VerifyOTP(ctx context.Context, args VerifyOTPArgs, reply *VerifyOTPResponse) error {
 	// First check this peer's history
 	var drama Drama
 	err := s.Peer.DB.View(func(tx *bolt.Tx) error {
@@ -134,10 +151,12 @@ func (s *HandshakeService) VerifyOTP(ctx context.Context, args VerifyOTPArgs, re
 		return err
 	}
 
+	// TODO
 	// Parse drama to ensure it's valid and peer can be trusted
 	// For instance if it's blacklisted can be denied completely
 	fmt.Println("Got drama from store:", drama)
 
+	// Verify the OTP is correct
 	log.Println("Verifying OTP, received:", args.CallingPeerID)
 	var cachedOTP string
 	x, found := s.Cache.Get(args.CallingPeerID)
@@ -146,15 +165,22 @@ func (s *HandshakeService) VerifyOTP(ctx context.Context, args VerifyOTPArgs, re
 	}
 
 	cachedOTP = x.(string)
-	fmt.Println("Got:", cachedOTP)
 
 	if strings.TrimRight(args.OTP, "\n") != cachedOTP {
 		return errors.New("OTP did not match")
 	}
 
-	fmt.Println("Yay it matched! I'm:", s.Peer.Self)
-	s.Cache.Delete(args.CallingPeerID) // for safety
-	*reply = s.Peer.Self
+	// OTP matched, generate sym key for this relationship
+	symKey := make([]byte, chacha20poly1305.KeySize)
+	if _, err := cryptorand.Read(symKey); err != nil {
+		panic(err)
+	}
+
+	// Cache symKey, will be added to persistent store once they respond with their identity
+	s.Cache.Set(args.CallingPeerID, symKey, cache.DefaultExpiration)
+
+	// Them is you to them!
+	reply.Them = s.Peer.Self
 	return nil
 }
 
