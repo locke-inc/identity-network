@@ -138,6 +138,7 @@ func (s *HandshakeService) VerifyOTP(ctx context.Context, args VerifyOTPArgs, re
 	err := s.Peer.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(TempPeerBucket))
 		v := b.Get([]byte(Prefix_Peer + args.CallingPeerID))
+
 		// Decode drama from gob
 		buf := bytes.NewBuffer(v)
 		dec := gob.NewDecoder(buf)
