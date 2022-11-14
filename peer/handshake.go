@@ -16,7 +16,6 @@ import (
 	"github.com/boltdb/bolt"
 	"github.com/libp2p/go-libp2p-core/peer"
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
-	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -31,34 +30,58 @@ type HandshakeService struct {
 	Peer  *Peer
 }
 
+// (1) Ask to start Relationship
 type StartRelationshipArgs struct {
 	CallingPeerID string
 }
 
-type VerifyOTPArgs struct {
+type StartRelationshipResp struct {
+	ReadyForAuth bool
+}
+
+// (2) Authorize if the relationship should happen
+type AuthorizeRelationshipArgs struct {
 	CallingPeerID string
+	Them          Person
 	OTP           string
 }
 
-type VerifyOTPResponse struct {
+type AuthorizeRelationshipResp struct {
 	Them   Person
+	TLD    Drama // top-level drama
 	SymKey []byte
 }
 
-func InitHandshake(host host.Host, dest peer.ID) {
+// (3)
+type SettleRelationshipArgs struct {
+	CallingPeerID string
+	Them          Person
+	Drama
+}
+
+type SettleRelationshipResp struct {
+	success bool
+}
+
+func InitHandshake(p *Peer, dest peer.ID) {
+	// Time the process to record in the drama
+	start := time.Now()
+
 	fmt.Println("Initiating handshake...")
-	rpcClient := gorpc.NewClient(host, HandshakeProtocolID)
+	rpcClient := gorpc.NewClient(p.Host, HandshakeProtocolID)
 
 	args1 := StartRelationshipArgs{
-		CallingPeerID: host.ID().String(),
+		CallingPeerID: p.Host.ID().String(),
 	}
-	var reply Drama
-	err := rpcClient.Call(dest, "HandshakeService", "StartRelationship", args1, &reply)
+	var resp1 StartRelationshipResp
+	err := rpcClient.Call(dest, "HandshakeService", "StartRelationship", args1, &resp1)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Ok, they're ready for me to send them an OTP. Here's the drama:\n", reply)
+	if !resp1.ReadyForAuth {
+		log.Fatal("They were not ready for auth, guess they have a commitment problem.")
+	}
 
 	// Input OTP
 	stdReader := bufio.NewReader(os.Stdin)
@@ -69,25 +92,59 @@ func InitHandshake(host host.Host, dest peer.ID) {
 		return
 	}
 
-	args2 := VerifyOTPArgs{
-		CallingPeerID: host.ID().String(),
+	args2 := AuthorizeRelationshipArgs{
+		CallingPeerID: p.Host.ID().String(),
+		Them:          p.Self, // You is them to them!
 		OTP:           otp,
 	}
-	var resp VerifyOTPResponse
-	err = rpcClient.Call(dest, "HandshakeService", "VerifyOTP", args2, &resp)
+	var resp2 AuthorizeRelationshipResp
+	err = rpcClient.Call(dest, "HandshakeService", " AuthorizeRelationship", args2, &resp2)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Ok got them!", resp)
+	// Check drama is valid
+	if !resp2.TLD.isValid() {
+		fmt.Println("Drama is NOT valid, abort")
+		panic(errors.New("Drama is invalid"))
+	}
 
-	// TODO now need to send them ourselves to finish the handshake
-	// Store symkey and all that
+	fmt.Println("Handshake was successful:", resp2)
+
+	t := Transaction{
+		Requester:   p.Host.ID().String(),
+		RequestType: "handshake",
+		Responder:   dest.String(),
+		Result:      99, // 99 represents a successful OTP auth <---- this is a little cheeky; it's not 100 since we're never 100% sure of anything...
+		Application: "handshake settled",
+		ProcessTime: time.Since(start),
+	}
+	resp2.TLD.addBlock(t, resp2.SymKey)
+
+	p.addPerson(&resp2.Them, &resp2.TLD, &resp2.SymKey)
+
+	// Lastly, settle the relationship
+	args3 := SettleRelationshipArgs{
+		CallingPeerID: p.Host.ID().String(),
+		Them:          p.Self, // You is them to them!
+		Drama:         resp2.TLD,
+	}
+	var resp3 SettleRelationshipResp
+	err = rpcClient.Call(dest, "HandshakeService", "SettleRelationship", args3, &resp3)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if !resp3.success {
+		panic(errors.New("Relationship was not settled for some reason..."))
+	}
+
+	fmt.Println("\n********** Relationship is settled! **********")
 }
 
 // StartRelationship is a peer-to-peer function, with this being the receiver peer.
 // The receiver peer handles the coordination of everything
-func (s *HandshakeService) StartRelationship(ctx context.Context, args StartRelationshipArgs, reply *Drama) error {
+func (s *HandshakeService) StartRelationship(ctx context.Context, args StartRelationshipArgs, resp *StartRelationshipResp) error {
 	// Time the process to record in the drama
 	start := time.Now()
 
@@ -99,7 +156,7 @@ func (s *HandshakeService) StartRelationship(ctx context.Context, args StartRela
 	}
 
 	// Display OTP for manual sharing
-	fmt.Println(otp)
+	fmt.Println("\n> OTP: ", otp)
 
 	// Cache OTP for later comparison
 	s.Cache.Set(args.CallingPeerID, otp, cache.DefaultExpiration)
@@ -116,23 +173,25 @@ func (s *HandshakeService) StartRelationship(ctx context.Context, args StartRela
 		Application: "init handshake",
 		ProcessTime: time.Since(start),
 	}
-	drama := CreateDrama(0)
+	drama := CreateDrama(1)
 
 	// Add an unencrypted block since this peer is not established as trusted yet and this information should be public
 	drama.addUnencryptedBlock(t)
-	fmt.Println("Drama made. Storing...", drama)
+
+	// Store
 	err = s.Peer.addPeer(TempPeerBucket, args.CallingPeerID, &drama)
 	if err != nil {
 		return err
 	}
 
-	// Send back
-	*reply = drama
-	fmt.Println("Process took:", t.ProcessTime)
+	resp.ReadyForAuth = true
 	return nil
 }
 
-func (s *HandshakeService) VerifyOTP(ctx context.Context, args VerifyOTPArgs, reply *VerifyOTPResponse) error {
+func (s *HandshakeService) AuthorizeRelationship(ctx context.Context, args AuthorizeRelationshipArgs, resp *AuthorizeRelationshipResp) error {
+	// Time the process to record in the drama
+	start := time.Now()
+
 	// First check this peer's history
 	var drama Drama
 	err := s.Peer.DB.View(func(tx *bolt.Tx) error {
@@ -155,10 +214,13 @@ func (s *HandshakeService) VerifyOTP(ctx context.Context, args VerifyOTPArgs, re
 	// TODO
 	// Parse drama to ensure it's valid and peer can be trusted
 	// For instance if it's blacklisted can be denied completely
-	fmt.Println("Got drama from store:", drama)
+	// fmt.Println("Got stored drama", drama)
+	// if !drama.isValid() {
+	// 	fmt.Println("Drama is NOT valid, abort")
+	// 	return errors.New("Drama is invalid")
+	// }
 
 	// Verify the OTP is correct
-	log.Println("Verifying OTP, received:", args.CallingPeerID)
 	var cachedOTP string
 	x, found := s.Cache.Get(args.CallingPeerID)
 	if !found {
@@ -168,20 +230,59 @@ func (s *HandshakeService) VerifyOTP(ctx context.Context, args VerifyOTPArgs, re
 	cachedOTP = x.(string)
 
 	if strings.TrimRight(args.OTP, "\n") != cachedOTP {
+		// TODO
+		// OTP did not match, record this transaction as failed and add a maximum number of calls before this peer is blacklisted
 		return errors.New("OTP did not match")
 	}
 
-	// OTP matched, generate sym key for this relationship
+	fmt.Println("\nHandshake success.")
+
+	// OTP matched, generate sym key for this relationship and add person
 	symKey := make([]byte, chacha20poly1305.KeySize)
 	if _, err := cryptorand.Read(symKey); err != nil {
 		panic(err)
 	}
 
-	// Cache symKey, will be added to persistent store once they respond with their identity
-	s.Cache.Set(args.CallingPeerID, symKey, cache.DefaultExpiration)
+	s.Peer.addPerson(&args.Them, &drama, &symKey)
+
+	// Remove the temp peer
+	s.Peer.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(TempPeerBucket))
+		b.Delete([]byte(Prefix_Peer + args.CallingPeerID))
+		return nil
+	})
+
+	t := Transaction{
+		Requester:   args.CallingPeerID,
+		RequestType: "handshake",
+		Responder:   s.Peer.Self.ID,
+		Result:      99, // 99 represents a successful OTP auth <---- this is a little cheeky; it's not 100 since we're never 100% sure of anything...
+		Application: "handshake success",
+		ProcessTime: time.Since(start),
+	}
+	drama.addBlock(t, symKey)
 
 	// Them is you to them!
-	reply.Them = s.Peer.Self
+	resp.Them = s.Peer.Self
+	resp.TLD = drama
+	resp.SymKey = symKey
+	return nil
+}
+
+func (s *HandshakeService) SettleRelationship(ctx context.Context, args SettleRelationshipArgs, resp *SettleRelationshipResp) error {
+	if !args.isValid() {
+		fmt.Println("Drama is NOT valid, abort")
+		resp.success = false
+		return errors.New("Drama is invalid")
+	}
+
+	err := s.Peer.updateDrama(args.Them.ID, args.CallingPeerID, &args.Drama)
+	if err != nil {
+		resp.success = false
+		return err
+	}
+
+	resp.success = true
 	return nil
 }
 

@@ -1,3 +1,25 @@
+/*
+https://en.wikipedia.org/wiki/Randomized_algorithm
+
+A randomized algorithm is an algorithm that employs a degree of randomness as part of its logic or procedure.
+
+One has to distinguish between algorithms that use the random input so that they always terminate with the correct answer,
+but where the expected running time is finite (Las Vegas algorithms, for example Quicksort[1]), and algorithms which have a
+chance of producing an incorrect result (Monte Carlo algorithms, for example the Monte Carlo algorithm for the MFAS problem[2])
+or fail to produce a result either by signaling a failure or failing to terminate.
+
+
+***In some cases, probabilistic algorithms are the only practical means of solving a problem.[3]
+
+
+In common practice, randomized algorithms are approximated using a pseudorandom number generator in place of a true source of
+random bits; such an implementation may deviate from the expected theoretical behavior and mathematical guarantees which may
+
+
+**** depend on the existence of an ideal true random number generator. <------ 	theory: passing around messages in a chaotic
+																				network generates truly quantum effects
+*/
+
 package peer
 
 import (

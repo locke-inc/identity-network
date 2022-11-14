@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"crypto/rand"
+	cryptorand "crypto/rand"
 
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/boltdb/bolt"
 	"github.com/multiformats/go-multiaddr"
+	"golang.org/x/crypto/chacha20poly1305"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/routing"
@@ -65,9 +67,15 @@ func (p *Peer) New() {
 	host := createHost(ctx, priv, *port)
 
 	// Add self to peer store
+	// TODO onboarding and coordinating all peers and shizz
 	p.Self.ID = *name
-	// p.Me.Peers[host.ID().String()] = CreateDrama(0)
-	p.addNewPerson(&p.Self)
+	// p.Me.Peers[host.ID().String()] = CreateDrama(1)
+	symKey := make([]byte, chacha20poly1305.KeySize)
+	if _, err := cryptorand.Read(symKey); err != nil {
+		panic(err)
+	}
+	d := CreateDrama(1)
+	p.addPerson(&p.Self, &d, &symKey)
 
 	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", *port))
 	if err != nil {
@@ -79,9 +87,8 @@ func (p *Peer) New() {
 	p.Host = host
 
 	// Start listening for handshakes
-	// p.initHandshakeProtocol()
 	p.listenForHandshake()
-	p.listenForCoordination()
+	// p.listenForCoordination()
 
 	// Connect if dest and peerID are supplied arguments
 	if *dest != "" && *peerID != "" {

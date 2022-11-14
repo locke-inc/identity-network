@@ -4,6 +4,7 @@ import (
 	"bytes"
 	cryptorand "crypto/rand" // be explicit about not being math/rand
 	"encoding/gob"
+	"fmt"
 	"time"
 
 	"golang.org/x/crypto/chacha20poly1305"
@@ -86,6 +87,7 @@ func (b *Drama) addUnencryptedBlock(t Transaction) {
 }
 
 func (b Drama) isValid() bool {
+	fmt.Println("Validating drama...")
 	for i := range b.Chain[1:] {
 		previousBlock := b.Chain[i]
 		currentBlock := b.Chain[i+1]

@@ -3,6 +3,7 @@ package peer
 import (
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"log"
 
@@ -39,7 +40,7 @@ func InitPeerStore() *bolt.DB {
 
 // Creates a bucket for a person and initializes a relationship
 // Stores peerIDs and inits a drama for each
-func (p *Peer) addNewPerson(person *Person) error {
+func (p *Peer) addPerson(person *Person, d *Drama, symKey *[]byte) error {
 	err := p.DB.Update(func(tx *bolt.Tx) error {
 		// Create new bucket for person
 		_, err := tx.CreateBucketIfNotExists([]byte(person.ID))
@@ -47,8 +48,6 @@ func (p *Peer) addNewPerson(person *Person) error {
 			return fmt.Errorf("could not create bucket for person: %v", person.ID)
 		}
 
-		// Init new drama for new person
-		var d = CreateDrama(0)
 		var drama bytes.Buffer
 		err = gob.NewEncoder(&drama).Encode(d)
 		if err != nil {
@@ -62,13 +61,17 @@ func (p *Peer) addNewPerson(person *Person) error {
 
 	// Add all peers to person's bucket and init new dramas for each
 	for peerID, _ := range person.Peers {
-		d := CreateDrama(0)
+		d := CreateDrama(1)
 		err = p.addPeer(person.ID, peerID, &d)
 		if err != nil {
 			fmt.Print(err)
 			return err
 		}
 	}
+
+	// Store symKey
+	// TODO figure out clever key naming system
+	p.addKey(person.ID, "initial", *symKey)
 	return err
 }
 
@@ -94,12 +97,34 @@ func (p *Peer) addPeer(name string, pid string, d *Drama) error {
 	return err
 }
 
-func (p *Peer) addKey(person string, keyName string, key []byte) error {
+func (p *Peer) addKey(personName string, keyName string, key []byte) error {
 	fmt.Println("Adding key:", keyName)
 
 	err := p.DB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(person))
+		b := tx.Bucket([]byte(personName))
 		err := b.Put([]byte(Prefix_KeyShard+keyName), key)
+		return err
+	})
+
+	return err
+}
+
+func (p *Peer) updateDrama(name string, pid string, d *Drama) error {
+	fmt.Println("Updating Drama for peer:", pid)
+
+	if !d.isValid() {
+		return errors.New("Cannot update Drama, it is invalid")
+	}
+
+	var drama bytes.Buffer
+	err := gob.NewEncoder(&drama).Encode(d)
+	if err != nil {
+		return err
+	}
+
+	err = p.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(name))
+		err = b.Put([]byte(Prefix_Peer+pid), drama.Bytes())
 		return err
 	})
 

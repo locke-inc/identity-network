@@ -26,6 +26,6 @@ func connect(ctx context.Context, p *Peer, destination string, pid string) {
 
 	// Use RPC to talk to the other peer
 	// TODO how does rpc need to be authenticated?
-	InitHandshake(p.Host, peerID)
+	InitHandshake(p, peerID)
 
 }

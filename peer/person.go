@@ -15,8 +15,8 @@ import (
 // A Person is made up of their owned peers and the relationships those peers have with other People
 // A Person's peers do not have individual relationships with each other, they all write to the same Drama
 type Person struct {
-	ID           string
-	Relationship Drama
+	ID string
+	// Relationship Drama
 
 	Peers map[string]Drama // key is PeerID
 }
@@ -50,23 +50,23 @@ func (s *HandshakeService) CoordinateOTP(ctx context.Context, args CoordinateOTP
 	return nil
 }
 
-func (p *Peer) listenForCoordination() {
-	rpcHost := gorpc.NewServer(p.Host, HandshakeProtocolID)
+// func (p *Peer) listenForCoordination() {
+// 	rpcHost := gorpc.NewServer(p.Host, HandshakeProtocolID)
 
-	// Create a cache with a default expiration time of 5 minutes, and which
-	// purges expired items every 10 minutes
-	c := cache.New(5*time.Minute, 10*time.Minute)
-	svc := HandshakeService{
-		Cache: c,
-		Peer:  p,
-	}
-	err := rpcHost.Register(&svc)
-	if err != nil {
-		panic(err)
-	}
+// 	// Create a cache with a default expiration time of 5 minutes, and which
+// 	// purges expired items every 10 minutes
+// 	c := cache.New(5*time.Minute, 10*time.Minute)
+// 	svc := HandshakeService{
+// 		Cache: c,
+// 		Peer:  p,
+// 	}
+// 	err := rpcHost.Register(&svc)
+// 	if err != nil {
+// 		panic(err)
+// 	}
 
-	fmt.Println("Listening for coordination")
-}
+// 	fmt.Println("Listening for coordination")
+// }
 
 func (p *Person) initiateCoordination(host host.Host, otp string) {
 	rpcClient := gorpc.NewClient(host, HandshakeProtocolID)
