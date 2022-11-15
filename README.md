@@ -7,14 +7,19 @@ We resolving peers to people.
 Ultimately the goal is for each person to have a lot of devices in their layer 0, Locke will sell a hosted peer and maybe a hardware device that plugs into a home router at some point.
 
 ## Run
-go run main.go
+Start your own local peer:
+    go run main.go
 
-Starts your own local peer. To connect to another peer run:
-go run main.go -dest /ip4/$PeerPublicIP/udp/5533/quic -peer $PeerID
+To connect to another peer run:
 
-Replacing $PeerPublicIP with a ipv4 address and $PeerID with the peerID located at that address.
+    go run main.go -dest /ip4/$PeerPublicIP/udp/5533/quic -peer $PeerID
 
-Of course we will eventually enable DHT routing by peer ID and you won't need to enter in their IP address, but for now it's fine.
+Replacing $PeerPublicIP with a ipv4 address and $PeerID with the peerID located at that address. Of course we will eventually enable DHT routing by peer ID and you won't need to enter in their IP address, but for now it's fine.
+
+Debug local storagge using boltdbweb:
+    ./boltdbweb --db-name=locke.db
+
+That boltdbweb executable was built for MacOS Apple Silicon, you can rebuild from https://github.com/evnix/boltdbweb but will require some manual work installing a go mod
 
 ## TODO
 1. Eddilithium3 is *almost* there but it needs to be implemented into the OpenSSL protocol as a key option, should be plug and play after that

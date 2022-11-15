@@ -135,6 +135,7 @@ func (p *Peer) updateDrama(name string, pid string, d *Drama) error {
 // The key is the peerID, the value is their blockchain message history (drama)
 func (p *Peer) getPerson(name string) (Person, error) {
 	person := Person{}
+	person.ID = name
 	person.Peers = make(map[string]Drama)
 
 	p.DB.View(func(tx *bolt.Tx) error {

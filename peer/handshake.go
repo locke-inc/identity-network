@@ -60,7 +60,7 @@ type SettleRelationshipArgs struct {
 }
 
 type SettleRelationshipResp struct {
-	success bool
+	Success bool
 }
 
 func InitHandshake(p *Peer, dest peer.ID) {
@@ -135,7 +135,7 @@ func InitHandshake(p *Peer, dest peer.ID) {
 		log.Fatal(err)
 	}
 
-	if !resp3.success {
+	if !resp3.Success {
 		panic(errors.New("Relationship was not settled for some reason..."))
 	}
 
@@ -272,17 +272,17 @@ func (s *HandshakeService) AuthorizeRelationship(ctx context.Context, args Autho
 func (s *HandshakeService) SettleRelationship(ctx context.Context, args SettleRelationshipArgs, resp *SettleRelationshipResp) error {
 	if !args.isValid() {
 		fmt.Println("Drama is NOT valid, abort")
-		resp.success = false
+		resp.Success = false
 		return errors.New("Drama is invalid")
 	}
 
 	err := s.Peer.updateDrama(args.Them.ID, args.CallingPeerID, &args.Drama)
 	if err != nil {
-		resp.success = false
+		resp.Success = false
 		return err
 	}
 
-	resp.success = true
+	resp.Success = true
 	return nil
 }
 
