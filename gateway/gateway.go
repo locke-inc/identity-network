@@ -1,29 +1,43 @@
 package gateway
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/locke-inc/identity-network/peer"
 )
 
-/*
- 1. Accept incoming API requests (basically, allows non-peers to query peers).
-    Later, perhaps we can allow servers to become peers themselves at will?
- 2. Choose n nodes randomly to send incoming API requests, for example:
-    Authenticate(person ID)
- 3. Bootstrap peers. Bootstraps lookout nodes at same time
- 4. Validate peer’s NameSystem and correct errors or detect attacks
-*/
 type Gateway struct {
-	peer.Peer
+	Peer peer.Peer
 }
 
-// Gateways will PROBABLY need to have a record of a persons community
+func (g *Gateway) New() {
+	fmt.Println("Creating new gateway")
+	p := peer.Peer{}
+	p.New()
+	g.Peer = p
 
-func (g *Gateway) Authenticate(peerID string) {
-	g.ChooseNodes()
-	// Query network
+	// Listen for gateway specific calls
+	g.listenForCentralAuth()
+
+	select {}
 }
 
-func (g *Gateway) ChooseNodes() {
-	// Simply generates N amount of random addresses to query the network
-	// The Gateway must somehow know how to randomly select ONLY occupied addresses
+func (g *Gateway) test() {
+	// Let's test the RPC
+	svc := CentralAuthService{
+		Peer: &g.Peer,
+	}
+
+	args := CentralAuthArgs{
+		Personame:    "tester100",
+		PasswordHash: "xKfDkCyBLDl5YoxLPtWoPwqW4F1eNHAxXskb/E+zOgo=",
+	}
+	var resp CentralAuthResp
+	err := svc.CentralAuth(context.Background(), args, &resp)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Resp:", resp)
 }

@@ -2,7 +2,6 @@ package peer
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -29,8 +28,7 @@ type Transaction struct {
 }
 
 func (b Block) calculateHash() string {
-	data, _ := json.Marshal(b.Data)
-	blockData := b.PreviousHash + string(data) + b.Timestamp.String() + strconv.Itoa(b.Pow)
+	blockData := b.PreviousHash + string(b.Data) + b.Timestamp.String() + strconv.Itoa(b.Pow)
 	blockHash := sha256.Sum256([]byte(blockData))
 	return fmt.Sprintf("%x", blockHash)
 }

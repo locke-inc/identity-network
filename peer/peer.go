@@ -3,7 +3,6 @@ package peer
 import (
 	"context"
 	"crypto/rand"
-	cryptorand "crypto/rand"
 
 	"flag"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/boltdb/bolt"
 	"github.com/multiformats/go-multiaddr"
-	"golang.org/x/crypto/chacha20poly1305"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/routing"
@@ -22,19 +20,56 @@ import (
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 )
 
+const (
+	DefaultPort = "5533"
+)
+
 type Peer struct {
 	Host host.Host
 	DB   *bolt.DB
 
 	// A person is defined by all the peers they own and all the relationships those peers have
 	// Therefore your "self" is all your peers and their relationships
-	Self Person
+	Self
 }
 
 // type Identity struct {
 // 	PeerID  string
 // 	PrivKey crypto.PrivKey `json:",omitempty"`
 // }
+
+func (p *Peer) Start(name string) {
+	// See if we can get a private key from store to restart a peer
+	p.DB = InitPeerStore()
+	defer p.DB.Close()
+
+	self, err := p.getSelf(name)
+	if err != nil {
+		fmt.Println("No existing database found, initializing a brand new peer")
+		p.New()
+		return
+	}
+
+	fmt.Println("Creating new host...")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create new host
+	host := createHost(ctx, self.PrivateKey, DefaultPort)
+	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", DefaultPort))
+	if err != nil {
+		panic(err)
+	}
+
+	host.Network().Listen(addr)
+	defer host.Close()
+	p.Host = host
+
+	// Start listening for handshakes
+	p.listenForHandshake()
+	// p.listenForCoordination()
+
+}
 
 // TODO I've been very liberal using *Peer as an interface for functions
 // At some point a legit peer interface should be defined
@@ -45,12 +80,17 @@ func (p *Peer) New() {
 	// Get flags
 	dest := flag.String("dest", "", "Destination multiaddr string")
 	peerID := flag.String("peer", "", "Peer ID")
-	port := flag.String("port", "5533", "Port")
+	port := flag.String("port", DefaultPort, "Port")
 	name := flag.String("name", "connor", "Your name")
 	flag.Parse()
 
 	// Generate key pair
 	priv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+
+	privKeyBytes, err := priv.Raw() // convert to bytes to store
 	if err != nil {
 		panic(err)
 	}
@@ -66,16 +106,26 @@ func (p *Peer) New() {
 	// Create new host
 	host := createHost(ctx, priv, *port)
 
+	// Top-level drama
+	tld := CreateDrama()
+
 	// Add self to peer store
 	// TODO onboarding and coordinating all peers and shizz
-	p.Self.ID = *name
-	// p.Me.Peers[host.ID().String()] = CreateDrama(1)
-	symKey := make([]byte, chacha20poly1305.KeySize)
-	if _, err := cryptorand.Read(symKey); err != nil {
-		panic(err)
+	peers := make(map[string]Drama)
+	peers[host.ID().String()] = Drama{} // TODO this is the top-level drama so shouldnt be made new every time
+
+	// Create self!
+	p.Self = Self{
+		Person: Person{
+			ID:    *name,
+			Peers: peers,
+		},
+		PrivateKey: priv,
+		TLD:        tld,
 	}
-	d := CreateDrama(1)
-	p.addPerson(&p.Self, &d, &symKey)
+
+	// Store
+	p.addPerson(&p.Self.Person, &tld, &privKeyBytes)
 
 	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", *port))
 	if err != nil {

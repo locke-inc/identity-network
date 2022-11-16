@@ -8,6 +8,7 @@ import (
 
 	"github.com/libp2p/go-libp2p-core/peer"
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/patrickmn/go-cache"
 )
@@ -15,10 +16,14 @@ import (
 // A Person is made up of their owned peers and the relationships those peers have with other People
 // A Person's peers do not have individual relationships with each other, they all write to the same Drama
 type Person struct {
-	ID string
-	// Relationship Drama
-
+	ID    string
 	Peers map[string]Drama // key is PeerID
+}
+
+type Self struct {
+	Person
+	PrivateKey crypto.PrivKey
+	TLD        Drama // top-level drama that all peers resolve to
 }
 
 // TODO this should be it's own service? Wasn't able to get 2 services to work at the same time

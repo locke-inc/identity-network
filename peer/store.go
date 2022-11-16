@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/libp2p/go-libp2p/core/crypto"
+
 	"github.com/boltdb/bolt"
 )
 
 const (
-	Prefix_Peer     = "peer_"
-	Prefix_KeyShard = "key_"
+	Prefix_Peer = "peer_"
+	Prefix_Key  = "key_"
 )
 
 // TODO encrypt data at rest
@@ -61,7 +63,7 @@ func (p *Peer) addPerson(person *Person, d *Drama, symKey *[]byte) error {
 
 	// Add all peers to person's bucket and init new dramas for each
 	for peerID, _ := range person.Peers {
-		d := CreateDrama(1)
+		d := CreateDrama()
 		err = p.addPeer(person.ID, peerID, &d)
 		if err != nil {
 			fmt.Print(err)
@@ -71,7 +73,7 @@ func (p *Peer) addPerson(person *Person, d *Drama, symKey *[]byte) error {
 
 	// Store symKey
 	// TODO figure out clever key naming system
-	p.addKey(person.ID, "initial", *symKey)
+	p.addKey(person.ID, "privKey", *symKey)
 	return err
 }
 
@@ -102,33 +104,86 @@ func (p *Peer) addKey(personName string, keyName string, key []byte) error {
 
 	err := p.DB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(personName))
-		err := b.Put([]byte(Prefix_KeyShard+keyName), key)
+		err := b.Put([]byte(Prefix_Key+keyName), key)
 		return err
 	})
 
 	return err
 }
 
-func (p *Peer) updateDrama(name string, pid string, d *Drama) error {
-	fmt.Println("Updating Drama for peer:", pid)
+func (p *Peer) getSelf(name string) (Self, error) {
+	self := Self{}
+	self.ID = name
 
-	if !d.isValid() {
-		return errors.New("Cannot update Drama, it is invalid")
-	}
+	// Get top-level drama
+	err := p.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("people"))
+		if b == nil {
+			return errors.New("People database not found")
+		}
 
-	var drama bytes.Buffer
-	err := gob.NewEncoder(&drama).Encode(d)
+		tld := b.Get([]byte(name))
+
+		// Decode drama from gob
+		buf := bytes.NewBuffer(tld)
+		dec := gob.NewDecoder(buf)
+
+		var drama Drama
+		if err := dec.Decode(&drama); err != nil {
+			return err
+		}
+
+		self.TLD = drama
+
+		return nil
+	})
 	if err != nil {
-		return err
+		return Self{}, err
 	}
 
-	err = p.DB.Update(func(tx *bolt.Tx) error {
+	// Get private key
+	err = p.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(name))
-		err = b.Put([]byte(Prefix_Peer+pid), drama.Bytes())
-		return err
+		if b == nil {
+			return errors.New(name + " -- database not found")
+		}
+
+		key := b.Get([]byte(Prefix_Key + "privKey"))
+		priv, err := crypto.UnmarshalECDSAPrivateKey(key)
+		if err != nil {
+			return errors.New("Couldn't load private key")
+		}
+		self.PrivateKey = priv
+
+		return nil
+	})
+	if err != nil {
+		return Self{}, err
+	}
+
+	// Get peers
+	self.Peers = make(map[string]Drama)
+	p.DB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(name))
+		c := b.Cursor()
+		// Get all the person's peers
+		for k, v := c.Seek([]byte(Prefix_Peer)); k != nil && bytes.HasPrefix(k, []byte(Prefix_Peer)); k, v = c.Next() {
+			// Decode drama from gob
+			buf := bytes.NewBuffer(v)
+			dec := gob.NewDecoder(buf)
+
+			var drama Drama
+			if err := dec.Decode(&drama); err != nil {
+				return err
+			}
+
+			self.Person.Peers[string(k)] = drama
+		}
+
+		return nil
 	})
 
-	return err
+	return self, nil
 }
 
 // GetPerson lists all the peerIDs owned by a person who goes by "name"
@@ -181,4 +236,27 @@ func (p *Peer) getAllPeople() (people []Person, err error) {
 	}
 
 	return people, nil
+}
+
+func (p *Peer) updateDrama(name string, pid string, d *Drama) error {
+	fmt.Println("Updating Drama for peer:", pid)
+
+	// TODO
+	// if !d.isValid() {
+	// 	return errors.New("Cannot update Drama, it is invalid")
+	// }
+
+	var drama bytes.Buffer
+	err := gob.NewEncoder(&drama).Encode(d)
+	if err != nil {
+		return err
+	}
+
+	err = p.DB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(name))
+		err = b.Put([]byte(Prefix_Peer+pid), drama.Bytes())
+		return err
+	})
+
+	return err
 }

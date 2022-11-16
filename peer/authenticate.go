@@ -27,6 +27,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/libp2p/go-libp2p-core/peer"
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
@@ -97,6 +98,25 @@ func queryPerson(ctx context.Context, p *Peer, person Person, app string) string
 	}
 
 	return "this would be a key shard"
+}
+
+// Authenticate protocol
+func (p *Peer) listenForAuthenticate() {
+	rpcHost := gorpc.NewServer(p.Host, HandshakeProtocolID)
+
+	// Create a cache with a default expiration time of 5 minutes, and which
+	// purges expired items every 10 minutes
+	c := cache.New(5*time.Minute, 10*time.Minute)
+	svc := HandshakeService{
+		Cache: c,
+		Peer:  p,
+	}
+	err := rpcHost.Register(&svc)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("\nListening for handshakes")
 }
 
 // Helpers

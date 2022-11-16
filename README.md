@@ -32,3 +32,5 @@ That boltdbweb executable was built for MacOS Apple Silicon, you can rebuild fro
     There are 2 ways a message can be sent to a Person:
         1. The message is sent to every peer the Person owns at the same time. The peers then validate that the message was received by all online peers.
         2. The message is sent to a single peer who then distributes the message and "coordinates" the response.
+
+4. Test Drama isValid()

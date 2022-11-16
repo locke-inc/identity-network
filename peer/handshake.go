@@ -1,20 +1,16 @@
 package peer
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	cryptorand "crypto/rand"
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/boltdb/bolt"
-	"github.com/libp2p/go-libp2p-core/peer"
 	gorpc "github.com/libp2p/go-libp2p-gorpc"
 	"github.com/patrickmn/go-cache"
 	"golang.org/x/crypto/chacha20poly1305"
@@ -30,7 +26,7 @@ type HandshakeService struct {
 	Peer  *Peer
 }
 
-// (1) Ask to start Relationship
+// (1) Ask to start a new relationship
 type StartRelationshipArgs struct {
 	CallingPeerID string
 }
@@ -52,7 +48,7 @@ type AuthorizeRelationshipResp struct {
 	SymKey []byte
 }
 
-// (3)
+// (3) Settle the relationship
 type SettleRelationshipArgs struct {
 	CallingPeerID string
 	Them          Person
@@ -61,85 +57,6 @@ type SettleRelationshipArgs struct {
 
 type SettleRelationshipResp struct {
 	Success bool
-}
-
-func InitHandshake(p *Peer, dest peer.ID) {
-	// Time the process to record in the drama
-	start := time.Now()
-
-	fmt.Println("Initiating handshake...")
-	rpcClient := gorpc.NewClient(p.Host, HandshakeProtocolID)
-
-	args1 := StartRelationshipArgs{
-		CallingPeerID: p.Host.ID().String(),
-	}
-	var resp1 StartRelationshipResp
-	err := rpcClient.Call(dest, "HandshakeService", "StartRelationship", args1, &resp1)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if !resp1.ReadyForAuth {
-		log.Fatal("They were not ready for auth, guess they have a commitment problem.")
-	}
-
-	// Input OTP
-	stdReader := bufio.NewReader(os.Stdin)
-	fmt.Print("> ")
-	otp, err := stdReader.ReadString('\n')
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	args2 := AuthorizeRelationshipArgs{
-		CallingPeerID: p.Host.ID().String(),
-		Them:          p.Self, // You is them to them!
-		OTP:           otp,
-	}
-	var resp2 AuthorizeRelationshipResp
-	err = rpcClient.Call(dest, "HandshakeService", " AuthorizeRelationship", args2, &resp2)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Check drama is valid
-	if !resp2.TLD.isValid() {
-		fmt.Println("Drama is NOT valid, abort")
-		panic(errors.New("Drama is invalid"))
-	}
-
-	fmt.Println("Handshake was successful:", resp2)
-
-	t := Transaction{
-		Requester:   p.Host.ID().String(),
-		RequestType: "handshake",
-		Responder:   dest.String(),
-		Result:      99, // 99 represents a successful OTP auth <---- this is a little cheeky; it's not 100 since we're never 100% sure of anything...
-		Application: "handshake settled",
-		ProcessTime: time.Since(start),
-	}
-	resp2.TLD.addBlock(t, resp2.SymKey)
-
-	p.addPerson(&resp2.Them, &resp2.TLD, &resp2.SymKey)
-
-	// Lastly, settle the relationship
-	args3 := SettleRelationshipArgs{
-		CallingPeerID: p.Host.ID().String(),
-		Them:          p.Self, // You is them to them!
-		Drama:         resp2.TLD,
-	}
-	var resp3 SettleRelationshipResp
-	err = rpcClient.Call(dest, "HandshakeService", "SettleRelationship", args3, &resp3)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if !resp3.Success {
-		panic(errors.New("Relationship was not settled for some reason..."))
-	}
-
-	fmt.Println("\n********** Relationship is settled! **********")
 }
 
 // StartRelationship is a peer-to-peer function, with this being the receiver peer.
@@ -173,7 +90,7 @@ func (s *HandshakeService) StartRelationship(ctx context.Context, args StartRela
 		Application: "init handshake",
 		ProcessTime: time.Since(start),
 	}
-	drama := CreateDrama(1)
+	drama := CreateDrama()
 
 	// Add an unencrypted block since this peer is not established as trusted yet and this information should be public
 	drama.addUnencryptedBlock(t)
@@ -215,10 +132,10 @@ func (s *HandshakeService) AuthorizeRelationship(ctx context.Context, args Autho
 	// Parse drama to ensure it's valid and peer can be trusted
 	// For instance if it's blacklisted can be denied completely
 	// fmt.Println("Got stored drama", drama)
-	// if !drama.isValid() {
-	// 	fmt.Println("Drama is NOT valid, abort")
-	// 	return errors.New("Drama is invalid")
-	// }
+	if !drama.isValid() {
+		fmt.Println("Drama is NOT valid, abort")
+		return errors.New("Drama is invalid")
+	}
 
 	// Verify the OTP is correct
 	var cachedOTP string
@@ -263,7 +180,7 @@ func (s *HandshakeService) AuthorizeRelationship(ctx context.Context, args Autho
 	drama.addBlock(t, symKey)
 
 	// Them is you to them!
-	resp.Them = s.Peer.Self
+	resp.Them = s.Peer.Self.Person
 	resp.TLD = drama
 	resp.SymKey = symKey
 	return nil
@@ -284,6 +201,25 @@ func (s *HandshakeService) SettleRelationship(ctx context.Context, args SettleRe
 
 	resp.Success = true
 	return nil
+}
+
+// Handshake protocol
+func (p *Peer) listenForHandshake() {
+	rpcHost := gorpc.NewServer(p.Host, HandshakeProtocolID)
+
+	// Create a cache with a default expiration time of 5 minutes, and which
+	// purges expired items every 10 minutes
+	c := cache.New(5*time.Minute, 10*time.Minute)
+	svc := HandshakeService{
+		Cache: c,
+		Peer:  p,
+	}
+	err := rpcHost.Register(&svc)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("\nListening for handshakes")
 }
 
 // TODO https://github.com/libp2p/specs/blob/master/discovery/mdns.md - Allows peers on same network to discover each other easily
