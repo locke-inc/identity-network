@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 
-	"flag"
 	"fmt"
 	"time"
 
@@ -40,17 +39,26 @@ type Peer struct {
 
 func (p *Peer) Start(name string) {
 	// See if we can get a private key from store to restart a peer
-	p.DB = InitPeerStore()
-	defer p.DB.Close()
+	db, err := InitPeerStore()
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+	p.DB = db
 
-	self, err := p.getSelf(name)
+	self, err := p.getSelf()
 	if err != nil {
 		fmt.Println("No existing database found, initializing a brand new peer")
-		p.New()
+		p.New(name)
 		return
 	}
 
-	fmt.Println("Creating new host...")
+	if self.ID != name {
+		fmt.Println("Name did not match existing peer's owner")
+		return
+	}
+
+	fmt.Println("Starting existing host...")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -67,6 +75,8 @@ func (p *Peer) Start(name string) {
 
 	// Start listening for handshakes
 	p.listenForHandshake()
+
+	select {}
 	// p.listenForCoordination()
 
 }
@@ -74,15 +84,14 @@ func (p *Peer) Start(name string) {
 // TODO I've been very liberal using *Peer as an interface for functions
 // At some point a legit peer interface should be defined
 // And any function that doesn't make sense to be in that interface should instead take *Peer as an argument
-func (p *Peer) New() {
+func (p *Peer) New(name string) {
 	fmt.Println("Initializing new peer...")
 
 	// Get flags
-	dest := flag.String("dest", "", "Destination multiaddr string")
-	peerID := flag.String("peer", "", "Peer ID")
-	port := flag.String("port", DefaultPort, "Port")
-	name := flag.String("name", "connor", "Your name")
-	flag.Parse()
+	// dest := flag.String("dest", "", "Destination multiaddr string")
+	// peerID := flag.String("peer", "", "Peer ID")
+	// port := flag.String("port", DefaultPort, "Port")
+	// flag.Parse()
 
 	// Generate key pair
 	priv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
@@ -90,23 +99,14 @@ func (p *Peer) New() {
 		panic(err)
 	}
 
-	privKeyBytes, err := priv.Raw() // convert to bytes to store
-	if err != nil {
-		panic(err)
-	}
-
-	// TODO encrypt boltdb
-	p.DB = InitPeerStore()
-	defer p.DB.Close()
-
 	fmt.Println("Creating new host...")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Create new host
-	host := createHost(ctx, priv, *port)
+	host := createHost(ctx, priv, DefaultPort)
 
-	// Top-level drama
+	// New top-level drama
 	tld := CreateDrama()
 
 	// Add self to peer store
@@ -117,7 +117,7 @@ func (p *Peer) New() {
 	// Create self!
 	p.Self = Self{
 		Person: Person{
-			ID:    *name,
+			ID:    name,
 			Peers: peers,
 		},
 		PrivateKey: priv,
@@ -125,9 +125,12 @@ func (p *Peer) New() {
 	}
 
 	// Store
-	p.addPerson(&p.Self.Person, &tld, &privKeyBytes)
+	err = p.addSelf(&p.Self)
+	if err != nil {
+		panic(err)
+	}
 
-	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", *port))
+	addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic", DefaultPort))
 	if err != nil {
 		panic(err)
 	}
@@ -141,9 +144,9 @@ func (p *Peer) New() {
 	// p.listenForCoordination()
 
 	// Connect if dest and peerID are supplied arguments
-	if *dest != "" && *peerID != "" {
-		connect(ctx, p, *dest, *peerID)
-	}
+	// if *dest != "" && *peerID != "" {
+	// 	connect(ctx, &p, *dest, *peerID)
+	// }
 
 	// Keep alive
 	select {}

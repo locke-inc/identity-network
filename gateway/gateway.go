@@ -11,10 +11,10 @@ type Gateway struct {
 	Peer peer.Peer
 }
 
-func (g *Gateway) New() {
+func (g *Gateway) Start(name string) {
 	fmt.Println("Creating new gateway")
 	p := peer.Peer{}
-	p.New()
+	p.Start(name)
 	g.Peer = p
 
 	// Listen for gateway specific calls

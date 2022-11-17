@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 
@@ -13,15 +12,17 @@ import (
 )
 
 const (
-	Prefix_Peer = "peer_"
-	Prefix_Key  = "key_"
+	ReservedWord_Self = "self"
+	ReservedWord_TLD  = "tld"
+	Prefix_Peer       = "peer_"
+	Prefix_Key        = "key_"
 )
 
 // TODO encrypt data at rest
-func InitPeerStore() *bolt.DB {
+func InitPeerStore() (*bolt.DB, error) {
 	db, err := bolt.Open("locke.db", 0600, nil)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	// Create "people" bucket
@@ -34,10 +35,56 @@ func InitPeerStore() *bolt.DB {
 		return nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	return db
+	return db, nil
+}
+
+// Creates a bucket for a person and initializes a relationship
+// Stores peerIDs and inits a drama for each
+func (p *Peer) addSelf(self *Self) error {
+	err := p.DB.Update(func(tx *bolt.Tx) error {
+		// Add "self" to people bucket
+		err := tx.Bucket([]byte("people")).Put([]byte(ReservedWord_Self), []byte(self.ID))
+		if err != nil {
+			return err
+		}
+
+		// Create new bucket for SELF
+		b, err := tx.CreateBucketIfNotExists([]byte(ReservedWord_Self))
+		if err != nil {
+			return fmt.Errorf("could not create SELF bucket")
+		}
+
+		// Add private key to self bucket
+		keyBytes, err := self.PrivateKey.Raw()
+		if err != nil {
+			return err
+		}
+		b.Put([]byte(Prefix_Key+"privKey"), keyBytes)
+
+		// Add top-level drama to bucket
+		var drama bytes.Buffer
+		err = gob.NewEncoder(&drama).Encode(self.TLD)
+		if err != nil {
+			return err
+		}
+		b.Put([]byte(ReservedWord_TLD), drama.Bytes())
+
+		return err
+	})
+
+	// Add all peers to person's bucket and init new dramas for each
+	for peerID, d := range self.Person.Peers {
+		err = p.addPeer(ReservedWord_Self, peerID, &d)
+		if err != nil {
+			fmt.Print(err)
+			return err
+		}
+	}
+
+	return err
 }
 
 // Creates a bucket for a person and initializes a relationship
@@ -111,20 +158,41 @@ func (p *Peer) addKey(personName string, keyName string, key []byte) error {
 	return err
 }
 
-func (p *Peer) getSelf(name string) (Self, error) {
+func (p *Peer) getSelf() (Self, error) {
 	self := Self{}
-	self.ID = name
 
-	// Get top-level drama
+	// Get Self's personame
 	err := p.DB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("people"))
 		if b == nil {
 			return errors.New("People database not found")
 		}
 
-		tld := b.Get([]byte(name))
+		self.ID = string(b.Get([]byte(ReservedWord_Self)))
+		return nil
+	})
+	if err != nil {
+		return Self{}, err
+	}
 
-		// Decode drama from gob
+	// Get private key, top-level drama, and peers from self bucket
+	err = p.DB.View(func(tx *bolt.Tx) error {
+		// Get "self" bucket
+		b := tx.Bucket([]byte(ReservedWord_Self))
+		if b == nil {
+			return errors.New(ReservedWord_Self + " -- database not found")
+		}
+
+		// Get private key
+		key := b.Get([]byte(Prefix_Key + "privKey"))
+		priv, err := crypto.UnmarshalECDSAPrivateKey(key)
+		if err != nil {
+			return errors.New("Couldn't load private key")
+		}
+		self.PrivateKey = priv
+
+		// Get top-level drama
+		tld := b.Get([]byte("tld"))
 		buf := bytes.NewBuffer(tld)
 		dec := gob.NewDecoder(buf)
 
@@ -135,38 +203,9 @@ func (p *Peer) getSelf(name string) (Self, error) {
 
 		self.TLD = drama
 
-		return nil
-	})
-	if err != nil {
-		return Self{}, err
-	}
-
-	// Get private key
-	err = p.DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(name))
-		if b == nil {
-			return errors.New(name + " -- database not found")
-		}
-
-		key := b.Get([]byte(Prefix_Key + "privKey"))
-		priv, err := crypto.UnmarshalECDSAPrivateKey(key)
-		if err != nil {
-			return errors.New("Couldn't load private key")
-		}
-		self.PrivateKey = priv
-
-		return nil
-	})
-	if err != nil {
-		return Self{}, err
-	}
-
-	// Get peers
-	self.Peers = make(map[string]Drama)
-	p.DB.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(name))
+		// Get all peers
+		self.Peers = make(map[string]Drama)
 		c := b.Cursor()
-		// Get all the person's peers
 		for k, v := c.Seek([]byte(Prefix_Peer)); k != nil && bytes.HasPrefix(k, []byte(Prefix_Peer)); k, v = c.Next() {
 			// Decode drama from gob
 			buf := bytes.NewBuffer(v)
@@ -182,6 +221,9 @@ func (p *Peer) getSelf(name string) (Self, error) {
 
 		return nil
 	})
+	if err != nil {
+		return Self{}, err
+	}
 
 	return self, nil
 }
